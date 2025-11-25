@@ -786,6 +786,144 @@
                 </div>
             );
         };
+        
+        // --- Tool 7: Readme Page ---
+        const Tool7_Readme = () => {
+            return (
+                <div className="fade-in max-w-4xl mx-auto space-y-8">
+                    <Card className="p-8">
+                        <div className="text-center mb-8 border-b pb-6">
+                            <h1 className="text-3xl font-bold text-slate-800 mb-2">招标采购人工具箱 (Tender & Procurement Toolbox)</h1>
+                            <p className="text-slate-500">集成了6款常用辅助工具，助力高效工作</p>
+                        </div>
+                        
+                        <section className="mb-10">
+                            <h2 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
+                                <i className="fas fa-info-circle"></i> 1. 项目简介
+                            </h2>
+                            <p className="text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
+                                本项目集成了招标采购过程中最常用的6款辅助工具，旨在为招标人、代理机构及相关从业人员提供便捷的费用测算与流程辅助服务。所有计算逻辑均严格基于国家及湖南省相关最新政策文件开发。
+                            </p>
+                        </section>
+
+                        <section className="mb-10">
+                            <h2 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
+                                <i className="fas fa-table"></i> 2. 收费标准与依据文件对照表
+                            </h2>
+                            <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm">
+                                <table className="w-full text-sm text-left border-collapse">
+                                    <thead className="bg-slate-100 text-slate-700 uppercase tracking-wider font-semibold">
+                                        <tr>
+                                            <th className="p-4 border-b border-slate-200">序号</th>
+                                            <th className="p-4 border-b border-slate-200">工具名称</th>
+                                            <th className="p-4 border-b border-slate-200">适用区域</th>
+                                            <th className="p-4 border-b border-slate-200">依据文件文号</th>
+                                            <th className="p-4 border-b border-slate-200">文件名称 (参考)</th>
+                                            <th className="p-4 border-b border-slate-200">备注</th>
+                                        </tr>
+                                    </thead>
+                                    <tbody className="text-slate-600 divide-y divide-slate-100">
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-800">01</td>
+                                            <td className="p-4 font-medium text-blue-600">招标代理服务费计算器</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
+                                            <td className="p-4">计价格[2002]1980号<br/><span className="text-xs text-slate-400">发改价格[2011]534号</span></td>
+                                            <td className="p-4">《招标代理服务收费管理暂行办法》等</td>
+                                            <td className="p-4 text-xs text-slate-500">差额定率累进法，支持三类招标</td>
+                                        </tr>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-800">02</td>
+                                            <td className="p-4 font-medium text-blue-600">湖南省专家评审费计算器</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs font-bold">湖南省</span></td>
+                                            <td className="p-4">湘发改公管〔2025〕440号<br/><span className="text-xs text-slate-400">湘财购〔2023〕36号</span></td>
+                                            <td className="p-4">《湖南省综合评标专家库专家劳务报酬标准》等</td>
+                                            <td className="p-4 text-xs text-slate-500">含综合评标与政府采购两套标准</td>
+                                        </tr>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-800">03</td>
+                                            <td className="p-4 font-medium text-blue-600">湖南省交易服务费计算器</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs font-bold">湖南省</span></td>
+                                            <td className="p-4">湘发改价费规〔2024〕292号</td>
+                                            <td className="p-4">《湖南省公共资源交易中心公共资源交易服务费收费标准》</td>
+                                            <td className="p-4 text-xs text-slate-500">区分施工(分摊)与服务(独担)</td>
+                                        </tr>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-800">04</td>
+                                            <td className="p-4 font-medium text-blue-600">工程设计收费计算器</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
+                                            <td className="p-4">计价格[2002]10号</td>
+                                            <td className="p-4">《工程勘察设计收费管理规定》</td>
+                                            <td className="p-4 text-xs text-slate-500">直线内插法基价 + 系数调整</td>
+                                        </tr>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-800">05</td>
+                                            <td className="p-4 font-medium text-blue-600">建设工程监理费用计算器</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
+                                            <td className="p-4">发改价格〔2007〕670号</td>
+                                            <td className="p-4">《建设工程监理与相关服务收费管理规定》</td>
+                                            <td className="p-4 text-xs text-slate-500">含高程与复杂程度调整</td>
+                                        </tr>
+                                        <tr className="hover:bg-slate-50 transition-colors">
+                                            <td className="p-4 font-medium text-slate-800">06</td>
+                                            <td className="p-4 font-medium text-blue-600">投标人顺序随机抽取系统</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-purple-100 text-purple-700 text-xs font-bold">通用工具</span></td>
+                                            <td className="p-4">N/A</td>
+                                            <td className="p-4">N/A</td>
+                                            <td className="p-4 text-xs text-slate-500">Fisher-Yates 随机算法</td>
+                                        </tr>
+                                    </tbody>
+                                </table>
+                            </div>
+                        </section>
+                        
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                            <section>
+                                <h2 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
+                                    <i className="fas fa-star"></i> 3. 功能亮点
+                                </h2>
+                                <ul className="space-y-3">
+                                    <li className="flex items-start gap-2">
+                                        <i className="fas fa-check text-green-500 mt-1"></i>
+                                        <span><strong className="text-slate-700">离线可用：</strong>所有逻辑封装在单个 HTML 文件中，下载后无需网络即可运行。</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <i className="fas fa-check text-green-500 mt-1"></i>
+                                        <span><strong className="text-slate-700">一键切换：</strong>集成式面板，快速在不同计算器间切换。</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <i className="fas fa-check text-green-500 mt-1"></i>
+                                        <span><strong className="text-slate-700">数据导入：</strong>随机抽取系统支持 Excel 格式名单批量导入。</span>
+                                    </li>
+                                    <li className="flex items-start gap-2">
+                                        <i className="fas fa-check text-green-500 mt-1"></i>
+                                        <span><strong className="text-slate-700">即时计算：</strong>输入金额后实时显示结果及详细计算过程。</span>
+                                    </li>
+                                </ul>
+                            </section>
+
+                            <section>
+                                <h2 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
+                                    <i className="fas fa-exclamation-triangle"></i> 4. 免责声明
+                                </h2>
+                                <ol className="list-decimal list-inside space-y-3 text-slate-600 bg-orange-50 p-4 rounded-lg border border-orange-100">
+                                    <li>本工具箱的计算结果仅供参考，不作为最终法律依据或结算凭证。</li>
+                                    <li>在实际业务中，请以各省市最新发布的官方红头文件、招标文件条款及双方签订的合同约定为准。</li>
+                                    <li>政策文件可能会随时间更新或废止，请使用者注意核对依据文件的时效性。</li>
+                                </ol>
+                            </section>
+                        </div>
+
+                        <section className="mt-10 pt-8 border-t border-slate-200 text-center">
+                            <h2 className="text-lg font-bold text-slate-700 mb-2">5. 反馈与支持</h2>
+                            <p className="text-slate-500 mb-4">如果您在使用过程中发现计算逻辑有误，或有新的功能建议，欢迎联系开发者。</p>
+                            <a href="mailto:jeff68@163.com" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors font-medium">
+                                <i className="fas fa-envelope"></i> jeff68@163.com
+                            </a>
+                        </section>
+                    </Card>
+                </div>
+            );
+        };
 
         // --- Main App ---
         const App = () => {
@@ -798,6 +936,7 @@
                 { id: 4, title: '工程设计收费', icon: 'fa-pen-ruler', color: 'text-orange-500', desc: '工程设计收费基价插值计算' },
                 { id: 5, title: '工程监理收费', icon: 'fa-clipboard-check', color: 'text-teal-500', desc: '发改价格〔2007〕670号' },
                 { id: 6, title: '随机抽取系统', icon: 'fa-dice', color: 'text-red-500', desc: '投标人顺序随机抽取 (支持Excel)' },
+                { id: 7, title: '使用说明 (Readme)', icon: 'fa-book', color: 'text-slate-600', desc: '收费标准与依据文件对照表' },
             ];
 
             const renderTool = () => {
@@ -808,6 +947,7 @@
                     case 4: return <Tool4_DesignFee />;
                     case 5: return <Tool5_SupervisionFee />;
                     case 6: return <Tool6_RandomDraw />;
+                    case 7: return <Tool7_Readme />;
                     default: return null;
                 }
             };
