@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>招标采购人工具箱</title>
+    <title>招标采购人工具箱 v2.0</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -23,6 +23,8 @@
         /* Custom scrollbar for tables */
         .scrollbar-hide::-webkit-scrollbar { display: none; }
         .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #2563eb; cursor: pointer; margin-top: -6px; }
+        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #e2e8f0; border-radius: 2px; }
     </style>
 </head>
 <body>
@@ -74,7 +76,6 @@
             const [amount, setAmount] = useState("");
             const [type, setType] = useState("goods");
             const [discount, setDiscount] = useState(100);
-            const [details, setDetails] = useState([]);
 
             const rateTable = [
                 { limit: 100, rates: { goods: 1.5, service: 1.5, engineering: 1.0 } },
@@ -209,14 +210,10 @@
             );
         };
 
-        // --- Tool 2: 湖南省专家评审费计算器 (Based on uploaded Tool 2) ---
+        // --- Tool 2: 湖南省专家评审费计算器 ---
         const Tool2_ExpertFee = () => {
-            const [mode, setMode] = useState('comprehensive'); // comprehensive | procurement
-            
-            // Comprehensive State
+            const [mode, setMode] = useState('comprehensive'); 
             const [compState, setCompState] = useState({ durationH: 0, durationM: 0, day2H: 0, day2M: 0, isOvernight: false, isChair: false, isCancelled: false });
-            
-            // Procurement State
             const [procState, setProcState] = useState({ durationH: 0, durationM: 0, isRemote: false, isLeader: false, isCancelled: false, level: 'normal' });
 
             // Logic: Comprehensive (2025)
@@ -786,15 +783,211 @@
                 </div>
             );
         };
+
+        // --- Tool 7: 建设项目前期工作咨询收费计算器 (New Integrated Tool) ---
+        const Tool7_ConsultingFee = () => {
+            const INVEST_BRACKETS = [3000, 10000, 50000, 100000, 500000];
+            const SERVICE_TYPES = [
+                { id: 'proposal_prep', name: '编制项目建议书', fees: [6, 14, 37, 55, 100], over50eRange: [100, 125] },
+                { id: 'feasibility_prep', name: '编制可行性研究报告', fees: [12, 28, 75, 110, 200], over50eRange: [200, 250] },
+                { id: 'proposal_eval', name: '评估项目建议书', fees: [4, 8, 12, 15, 17], over50eRange: [17, 20] },
+                { id: 'feasibility_eval', name: '评估可行性研究报告', fees: [5, 10, 15, 20, 25], over50eRange: [25, 35] }
+            ];
+            const INDUSTRIES = [
+                { name: '石化、化工、钢铁', value: 1.3 },
+                { name: '石油、天然气、水利、水电、交通(水运)、化纤', value: 1.2 },
+                { name: '有色、黄金、纺织、轻工、邮电、广播电视、医药、煤炭、火电(含核电)、机械', value: 1.0 },
+                { name: '林业、商业、粮食、建筑', value: 0.8 },
+                { name: '建材、交通(公路)、铁道、市政公用工程', value: 0.7 }
+            ];
+
+            const [investAmount, setInvestAmount] = useState('');
+            const [investUnit, setInvestUnit] = useState('wanyuan'); 
+            const [serviceType, setServiceType] = useState(SERVICE_TYPES[0].id);
+            const [industryCoeff, setIndustryCoeff] = useState(1.0);
+            const [complexityCoeff, setComplexityCoeff] = useState(1.0);
+
+            const result = useMemo(() => {
+                const invest = parseFloat(investAmount);
+                if (isNaN(invest) || invest <= 0) return null;
+
+                const investInWan = investUnit === 'yiyuan' ? invest * 10000 : invest;
+                const service = SERVICE_TYPES.find(s => s.id === serviceType);
+                if (!service) return null;
+
+                let baseFee = 0;
+                let method = '';
+                let isRange = false;
+                let rangeMin = 0;
+                let rangeMax = 0;
+
+                if (investInWan < 3000) {
+                    const y2 = service.fees[0];
+                    baseFee = (investInWan / 3000) * y2; 
+                    method = 'below_min';
+                } else if (investInWan > 500000) {
+                    isRange = true;
+                    rangeMin = service.over50eRange[0];
+                    rangeMax = service.over50eRange[1];
+                    method = 'above_max';
+                } else {
+                    method = 'standard';
+                    for (let i = 0; i < INVEST_BRACKETS.length - 1; i++) {
+                        if (investInWan >= INVEST_BRACKETS[i] && investInWan <= INVEST_BRACKETS[i+1]) {
+                            const x1 = INVEST_BRACKETS[i];
+                            const x2 = INVEST_BRACKETS[i+1];
+                            const y1 = service.fees[i];
+                            const y2 = service.fees[i+1];
+                            baseFee = y1 + (y2 - y1) * ((investInWan - x1) / (x2 - x1));
+                            break;
+                        }
+                    }
+                }
+
+                const totalCoeff = industryCoeff * complexityCoeff;
+                return {
+                    investInWan, baseFee, isRange,
+                    rangeMin: rangeMin * totalCoeff,
+                    rangeMax: rangeMax * totalCoeff,
+                    baseRangeMin: rangeMin,
+                    baseRangeMax: rangeMax,
+                    finalFee: baseFee * totalCoeff,
+                    method, totalCoeff
+                };
+            }, [investAmount, investUnit, serviceType, industryCoeff, complexityCoeff]);
+
+            return (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-8 fade-in">
+                    <div className="space-y-5">
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
+                            <p className="text-sm text-blue-700">依据：计价格[1999]1283号</p>
+                        </div>
+
+                        <div>
+                            <InputGroup label="1. 估算投资额">
+                                <div className="flex">
+                                    <input 
+                                        type="number" 
+                                        value={investAmount} 
+                                        onChange={e => setInvestAmount(e.target.value)} 
+                                        className="w-full p-2 border rounded-l-lg focus:ring-2 focus:ring-blue-500 outline-none" 
+                                        placeholder="请输入金额" 
+                                    />
+                                    <select 
+                                        value={investUnit} 
+                                        onChange={e => setInvestUnit(e.target.value)} 
+                                        className="bg-slate-100 border border-l-0 rounded-r-lg px-3 text-sm text-slate-700 outline-none"
+                                    >
+                                        <option value="wanyuan">万元</option>
+                                        <option value="yiyuan">亿元</option>
+                                    </select>
+                                </div>
+                            </InputGroup>
+                        </div>
+
+                        <InputGroup label="2. 咨询项目类型">
+                            <div className="space-y-2">
+                                {SERVICE_TYPES.map(type => (
+                                    <label key={type.id} className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${serviceType === type.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'hover:bg-slate-50'}`}>
+                                        <input type="radio" name="serviceType" value={type.id} checked={serviceType === type.id} onChange={e => setServiceType(e.target.value)} className="text-blue-600" />
+                                        <span className="ml-3 text-sm text-slate-700">{type.name}</span>
+                                    </label>
+                                ))}
+                            </div>
+                        </InputGroup>
+
+                        <InputGroup label="3. 行业调整系数">
+                            <select value={industryCoeff} onChange={e => setIndustryCoeff(parseFloat(e.target.value))} className="w-full p-2 border rounded-lg bg-white">
+                                {INDUSTRIES.map((ind, i) => (
+                                    <option key={i} value={ind.value}>{ind.value} - {ind.name}</option>
+                                ))}
+                            </select>
+                        </InputGroup>
+
+                        <InputGroup label="4. 复杂程度调整系数" subLabel={`当前: ${complexityCoeff}`}>
+                            <div className="flex items-center gap-4">
+                                <input 
+                                    type="range" min="0.8" max="1.2" step="0.01" 
+                                    value={complexityCoeff} 
+                                    onChange={e => setComplexityCoeff(parseFloat(e.target.value))} 
+                                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                                />
+                                <div className="text-xs text-slate-400 w-20 text-right">0.8 ~ 1.2</div>
+                            </div>
+                            <div className="flex justify-between text-xs text-slate-400 mt-1">
+                                <span>简单(0.8)</span><span>一般(1.0)</span><span>复杂(1.2)</span>
+                            </div>
+                        </InputGroup>
+                    </div>
+
+                    <div className="space-y-6">
+                        {!result ? (
+                            <Card className="p-8 text-center text-slate-400 h-full flex flex-col items-center justify-center">
+                                <i className="fas fa-calculator text-4xl mb-4 opacity-20"></i>
+                                <p>请输入估算投资额开始计算</p>
+                            </Card>
+                        ) : (
+                            <>
+                                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
+                                    <h3 className="text-blue-100 text-sm font-bold uppercase tracking-wider mb-2">收费基准价 (含系数)</h3>
+                                    {result.isRange ? (
+                                        <div>
+                                            <div className="text-3xl font-bold mb-1">{formatCurrency(result.rangeMin)} ~ {formatCurrency(result.rangeMax)} <span className="text-lg font-normal">万元</span></div>
+                                            <span className="text-xs bg-white/20 px-2 py-1 rounded">需协商确定 (50亿元以上)</span>
+                                        </div>
+                                    ) : (
+                                        <div>
+                                            <div className="text-4xl font-bold">{formatCurrency(result.finalFee)} <span className="text-lg font-normal">万元</span></div>
+                                            {result.method === 'below_min' && <div className="text-xs text-orange-200 mt-2"><i className="fas fa-exclamation-triangle"></i> 3000万元以下 (线性折算参考)</div>}
+                                        </div>
+                                    )}
+                                </div>
+
+                                <Card className="bg-slate-50 p-4 text-sm space-y-3">
+                                    <div className="font-bold text-slate-700 border-b pb-2 mb-2">计算详情</div>
+                                    
+                                    <div className="flex justify-between items-center">
+                                        <span className="text-slate-600">基础收费 (插值)</span>
+                                        <span className="font-mono font-bold">
+                                            {result.isRange ? `${result.baseRangeMin}-${result.baseRangeMax}` : formatCurrency(result.baseFee)} 万元
+                                        </span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 text-right mb-2">对应投资额: {formatCurrency(result.investInWan)} 万元</div>
+                                    
+                                    <div className="flex justify-between border-t pt-2 border-slate-200">
+                                        <span>行业调整系数</span>
+                                        <span className="font-mono">× {industryCoeff}</span>
+                                    </div>
+                                    <div className="flex justify-between">
+                                        <span>复杂程度系数</span>
+                                        <span className="font-mono">× {complexityCoeff}</span>
+                                    </div>
+
+                                    <div className="bg-slate-100 p-2 rounded mt-2 text-xs text-slate-500 font-mono break-all">
+                                        公式: {result.isRange ? `[${result.baseRangeMin}~${result.baseRangeMax}]` : formatCurrency(result.baseFee)} × {industryCoeff} × {complexityCoeff}
+                                    </div>
+                                </Card>
+
+                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-xs text-orange-800 space-y-1">
+                                    <p className="font-bold mb-1"><i className="fas fa-info-circle"></i> 注意事项：</p>
+                                    <p>1. 3000万元以下的收费标准由各省制定，本计算器采用线性插值作为参考。</p>
+                                    <p>2. 单独编制项目建议书/可研报告，若需进行勘察、试验，费用另行协商。</p>
+                                </div>
+                            </>
+                        )}
+                    </div>
+                </div>
+            );
+        };
         
-        // --- Tool 7: Readme Page ---
-        const Tool7_Readme = () => {
+        // --- Tool 8: Readme Page (Updated) ---
+        const Tool8_Readme = () => {
             return (
                 <div className="fade-in max-w-4xl mx-auto space-y-8">
                     <Card className="p-8">
                         <div className="text-center mb-8 border-b pb-6">
-                            <h1 className="text-3xl font-bold text-slate-800 mb-2">招标采购人工具箱 (Tender & Procurement Toolbox)</h1>
-                            <p className="text-slate-500">集成了6款常用辅助工具，助力高效工作</p>
+                            <h1 className="text-3xl font-bold text-slate-800 mb-2">招标采购人工具箱 v2.0</h1>
+                            <p className="text-slate-500">集成了7款常用辅助工具，助力高效工作</p>
                         </div>
                         
                         <section className="mb-10">
@@ -802,7 +995,7 @@
                                 <i className="fas fa-info-circle"></i> 1. 项目简介
                             </h2>
                             <p className="text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                本项目集成了招标采购过程中最常用的6款辅助工具，旨在为招标人、代理机构及相关从业人员提供便捷的费用测算与流程辅助服务。所有计算逻辑均严格基于国家及湖南省相关最新政策文件开发。
+                                本项目集成了招标采购过程中最常用的7款辅助工具，旨在为招标人、代理机构及相关从业人员提供便捷的费用测算与流程辅助服务。所有计算逻辑均严格基于国家及湖南省相关最新政策文件开发。
                             </p>
                         </section>
 
@@ -871,6 +1064,14 @@
                                             <td className="p-4">N/A</td>
                                             <td className="p-4 text-xs text-slate-500">Fisher-Yates 随机算法</td>
                                         </tr>
+                                         <tr className="hover:bg-slate-50 transition-colors bg-blue-50/50">
+                                            <td className="p-4 font-medium text-slate-800">07</td>
+                                            <td className="p-4 font-medium text-blue-600">建设项目前期工作咨询收费</td>
+                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
+                                            <td className="p-4">计价格[1999]1283号</td>
+                                            <td className="p-4">《建设项目前期工作咨询收费暂行规定》</td>
+                                            <td className="p-4 text-xs text-slate-500">编制/评估建议书与可研报告</td>
+                                        </tr>
                                     </tbody>
                                 </table>
                             </div>
@@ -892,10 +1093,6 @@
                                     </li>
                                     <li className="flex items-start gap-2">
                                         <i className="fas fa-check text-green-500 mt-1"></i>
-                                        <span><strong className="text-slate-700">数据导入：</strong>随机抽取系统支持 Excel 格式名单批量导入。</span>
-                                    </li>
-                                    <li className="flex items-start gap-2">
-                                        <i className="fas fa-check text-green-500 mt-1"></i>
                                         <span><strong className="text-slate-700">即时计算：</strong>输入金额后实时显示结果及详细计算过程。</span>
                                     </li>
                                 </ul>
@@ -912,8 +1109,8 @@
                                 </ol>
                             </section>
                         </div>
-
-                        <section className="mt-10 pt-8 border-t border-slate-200 text-center">
+                        
+                         <section className="mt-10 pt-8 border-t border-slate-200 text-center">
                             <h2 className="text-lg font-bold text-slate-700 mb-2">5. 反馈与支持</h2>
                             <p className="text-slate-500 mb-4">如果您在使用过程中发现计算逻辑有误，或有新的功能建议，欢迎联系开发者。</p>
                             <a href="mailto:jeff68@163.com" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors font-medium">
@@ -936,7 +1133,8 @@
                 { id: 4, title: '工程设计收费', icon: 'fa-pen-ruler', color: 'text-orange-500', desc: '工程设计收费基价插值计算' },
                 { id: 5, title: '工程监理收费', icon: 'fa-clipboard-check', color: 'text-teal-500', desc: '发改价格〔2007〕670号' },
                 { id: 6, title: '随机抽取系统', icon: 'fa-dice', color: 'text-red-500', desc: '投标人顺序随机抽取 (支持Excel)' },
-                { id: 7, title: '使用说明 (Readme)', icon: 'fa-book', color: 'text-slate-600', desc: '收费标准与依据文件对照表' },
+                { id: 7, title: '前期工作咨询收费', icon: 'fa-chart-line', color: 'text-indigo-500', desc: '计价格[1999]1283号' },
+                { id: 8, title: '使用说明 (Readme)', icon: 'fa-book', color: 'text-slate-600', desc: '收费标准与依据文件对照表' },
             ];
 
             const renderTool = () => {
@@ -947,7 +1145,8 @@
                     case 4: return <Tool4_DesignFee />;
                     case 5: return <Tool5_SupervisionFee />;
                     case 6: return <Tool6_RandomDraw />;
-                    case 7: return <Tool7_Readme />;
+                    case 7: return <Tool7_ConsultingFee />;
+                    case 8: return <Tool8_Readme />;
                     default: return null;
                 }
             };
