@@ -3,17 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>招标采购人工具箱 v2.1</title>
-    <!-- Tailwind CSS -->
+    <title>招标采购人工具箱 v2.2</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <!-- SheetJS (XLSX) for Random Draw Tool -->
     <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
-    <!-- FontAwesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
 
     <style>
@@ -22,15 +17,10 @@
         .slide-in { animation: slideIn 0.3s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        /* Custom scrollbar for tables */
-        .scrollbar-hide::-webkit-scrollbar { display: none; }
-        .scrollbar-hide { -ms-overflow-style: none; scrollbar-width: none; }
+        .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 700; }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #2563eb; cursor: pointer; margin-top: -6px; }
         input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #e2e8f0; border-radius: 2px; }
-        @media print {
-            .no-print { display: none; }
-            .print-break { page-break-inside: avoid; }
-        }
+        @media print { .no-print { display: none; } .print-break { page-break-inside: avoid; } }
     </style>
 </head>
 <body>
@@ -39,7 +29,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- Common Components ---
+        // --- 通用基础组件 ---
         const Card = ({ children, className = "" }) => (
             <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${className}`}>
                 {children}
@@ -75,14 +65,15 @@
             </div>
         );
 
-        // --- Utils ---
+        // --- 通用工具函数 ---
         const formatCurrency = (num) => new Intl.NumberFormat('zh-CN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(num);
         const formatDate = (date) => {
             if (!date) return '';
-            const y = date.getFullYear();
-            const m = String(date.getMonth() + 1).padStart(2, '0');
-            const d = String(date.getDate()).padStart(2, '0');
-            return `${y}-${m}-${d}`;
+            const d = new Date(date);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, '0');
+            const day = String(d.getDate()).padStart(2, '0');
+            return `${y}-${m}-${day}`;
         };
         const addDays = (dateStr, days) => {
             const result = new Date(dateStr);
@@ -94,8 +85,12 @@
             result.setDate(result.getDate() - days);
             return result;
         };
+        const isWeekend = (date) => {
+            const day = date.getDay();
+            return day === 0 || day === 6;
+        };
 
-        // --- Tool 1: 招标代理服务费计算器 ---
+        // --- Tool 1: 招标代理服务费 ---
         const Tool1_AgencyFee = () => {
             const [amount, setAmount] = useState("");
             const [type, setType] = useState("goods");
@@ -114,21 +109,17 @@
             const result = useMemo(() => {
                 const val = parseFloat(amount);
                 if (!val || val <= 0) return { base: 0, final: 0, details: [] };
-
                 const amountWan = val / 10000;
                 let totalFeeWan = 0;
                 let prevLimit = 0;
                 let breakdown = [];
-
                 for (let tier of rateTable) {
                     const currentLimit = tier.limit;
                     const rate = tier.rates[type];
                     let rangeAmount = 0;
-
                     if (amountWan > prevLimit) {
                         rangeAmount = (amountWan >= currentLimit ? currentLimit : amountWan) - prevLimit;
                     }
-
                     if (rangeAmount > 0) {
                         const segmentFee = rangeAmount * (rate / 100);
                         totalFeeWan += segmentFee;
@@ -137,93 +128,47 @@
                             rate: rate,
                             fee: segmentFee * 10000
                         });
-                    } else if (amountWan <= prevLimit && prevLimit > 0) {
-                        break;
-                    }
+                    } else if (amountWan <= prevLimit && prevLimit > 0) break;
                     prevLimit = currentLimit;
                 }
-
                 const baseFee = totalFeeWan * 10000;
                 return { base: baseFee, final: baseFee * (discount / 100), details: breakdown };
             }, [amount, type, discount]);
 
             return (
                 <div className="space-y-6 fade-in">
-                    <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-                        <p className="text-sm text-blue-700">依据：计价格[2002]1980号 & 发改价格[2011]534号</p>
-                    </div>
-
+                    <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 text-sm text-blue-700">依据：计价格[2002]1980号 & 发改价格[2011]534号</div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-4">
                             <InputGroup label="项目类别">
                                 <div className="grid grid-cols-3 gap-2">
                                     {[['goods', '货物招标'], ['service', '服务招标'], ['engineering', '工程招标']].map(([key, label]) => (
-                                        <button
-                                            key={key}
-                                            onClick={() => setType(key)}
-                                            className={`py-2 text-sm rounded-md border ${type === key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}
-                                        >
-                                            {label}
-                                        </button>
+                                        <button key={key} onClick={() => setType(key)} className={`py-2 text-sm rounded-md border ${type === key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>{label}</button>
                                     ))}
                                 </div>
                             </InputGroup>
-
                             <InputGroup label="中标金额" suffix="元" subLabel={amount ? `${(amount/10000).toFixed(4)} 万元` : ''}>
-                                <input
-                                    type="number"
-                                    value={amount}
-                                    onChange={(e) => setAmount(e.target.value)}
-                                    className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pl-4 pr-10"
-                                    placeholder="请输入金额"
-                                />
+                                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pl-4 pr-10" placeholder="请输入金额" />
                             </InputGroup>
-
                             <InputGroup label="折扣率" suffix="%" subLabel="默认100%">
-                                <input
-                                    type="number"
-                                    value={discount}
-                                    onChange={(e) => setDiscount(e.target.value)}
-                                    className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pl-4 pr-10"
-                                />
+                                <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pl-4 pr-10" />
                             </InputGroup>
                         </div>
-
                         <Card className="bg-slate-50 p-6 flex flex-col justify-between h-full">
                             <div>
                                 <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">计算结果</h3>
-                                <div className="flex justify-between items-center mb-2 text-sm">
-                                    <span className="text-slate-500">标准收费</span>
-                                    <span className="font-medium text-slate-700">¥ {formatCurrency(result.base)}</span>
-                                </div>
-                                <div className="flex justify-between items-center pt-4 border-t border-slate-200">
-                                    <span className="text-lg font-bold text-slate-800">最终收费</span>
-                                    <span className="text-2xl font-bold text-blue-600">¥ {formatCurrency(result.final)}</span>
-                                </div>
+                                <div className="flex justify-between items-center mb-2 text-sm"><span className="text-slate-500">标准收费</span><span className="font-medium text-slate-700">¥ {formatCurrency(result.base)}</span></div>
+                                <div className="flex justify-between items-center pt-4 border-t border-slate-200"><span className="text-lg font-bold text-slate-800">最终收费</span><span className="text-2xl font-bold text-blue-600">¥ {formatCurrency(result.final)}</span></div>
                             </div>
-                            
                             <div className="mt-6">
                                 <p className="text-xs font-semibold text-slate-500 mb-2">计算明细 (差额定率累进)</p>
                                 <div className="bg-white rounded border border-slate-200 overflow-hidden text-xs">
                                     <table className="w-full text-left">
-                                        <thead className="bg-slate-50">
-                                            <tr>
-                                                <th className="p-2">区间</th>
-                                                <th className="p-2">费率</th>
-                                                <th className="p-2 text-right">金额</th>
-                                            </tr>
-                                        </thead>
+                                        <thead className="bg-slate-50"><tr><th className="p-2">区间</th><th className="p-2">费率</th><th className="p-2 text-right">金额</th></tr></thead>
                                         <tbody>
                                             {result.details.map((row, idx) => (
-                                                <tr key={idx} className="border-t border-slate-100">
-                                                    <td className="p-2 text-slate-600">{row.range}</td>
-                                                    <td className="p-2 text-blue-500">{row.rate}%</td>
-                                                    <td className="p-2 text-right font-mono">{formatCurrency(row.fee)}</td>
-                                                </tr>
+                                                <tr key={idx} className="border-t border-slate-100"><td className="p-2 text-slate-600">{row.range}</td><td className="p-2 text-blue-500">{row.rate}%</td><td className="p-2 text-right font-mono">{formatCurrency(row.fee)}</td></tr>
                                             ))}
-                                            {result.details.length === 0 && (
-                                                <tr><td colSpan="3" className="p-4 text-center text-slate-400">请输入金额查看明细</td></tr>
-                                            )}
                                         </tbody>
                                     </table>
                                 </div>
@@ -234,7 +179,7 @@
             );
         };
 
-        // --- Tool 2: 湖南省专家评审费计算器 ---
+        // --- Tool 2: 湖南省专家评审费 ---
         const Tool2_ExpertFee = () => {
             const [mode, setMode] = useState('comprehensive'); 
             const [compState, setCompState] = useState({ durationH: 0, durationM: 0, day2H: 0, day2M: 0, isOvernight: false, isChair: false, isCancelled: false });
@@ -242,27 +187,19 @@
 
             const compResult = useMemo(() => {
                 let fee = 0, logs = [];
-                if (compState.isCancelled) {
-                    fee = 200; logs.push("项目取消/回避：200元");
-                } else {
+                if (compState.isCancelled) { fee = 200; logs.push("项目取消/回避：200元"); }
+                else {
                     const roundT = (h, m) => {
-                        const totalM = h * 60 + m;
-                        if (totalM === 0) return 0;
-                        const roundedH = Math.floor(totalM / 60);
-                        const remM = totalM % 60;
-                        if (remM === 0) return roundedH;
-                        return remM < 30 ? roundedH + 0.5 : roundedH + 1.0;
+                        const totalM = h * 60 + m; if (totalM === 0) return 0;
+                        const roundedH = Math.floor(totalM / 60); const remM = totalM % 60;
+                        if (remM === 0) return roundedH; return remM < 30 ? roundedH + 0.5 : roundedH + 1.0;
                     };
-                    
                     const T1 = roundT(compState.durationH, compState.durationM);
                     let day1 = T1 <= 4 ? 800 : (800 + (T1 - 4) * 100);
-                    fee += day1;
-                    logs.push(`第一日(${T1}h): ${day1}元`);
-
+                    fee += day1; logs.push(`第一日(${T1}h): ${day1}元`);
                     if (compState.isOvernight) {
                         const T2 = roundT(compState.day2H, compState.day2M);
-                        fee += T2 * 100;
-                        logs.push(`第二日(${T2}h): ${T2*100}元`);
+                        fee += T2 * 100; logs.push(`第二日(${T2}h): ${T2*100}元`);
                     }
                     if (compState.isChair) { fee += 100; logs.push("主任评委: +100元"); }
                 }
@@ -272,8 +209,7 @@
             const procResult = useMemo(() => {
                 let fee = 0, logs = [];
                 if (procState.isCancelled) {
-                    fee = procState.isRemote ? 300 : 200;
-                    logs.push(`取消(${procState.isRemote ? '异地' : '同城'}): ${fee}元`);
+                    fee = procState.isRemote ? 300 : 200; logs.push(`取消(${procState.isRemote ? '异地' : '同城'}): ${fee}元`);
                 } else if (procState.isRemote) {
                     const totalH = procState.durationH + procState.durationM / 60;
                     let halfDays = totalH <= 4 ? 1 : (totalH <= 8 ? 2 : Math.ceil(totalH / 4));
@@ -284,12 +220,9 @@
                     const mins = procState.durationH * 60 + procState.durationM;
                     if (mins <= 180) { fee = 400; logs.push("≤3小时: 400元"); }
                     else {
-                        const excess = mins - 180;
-                        const exHours = Math.floor(excess / 60);
-                        const rem = excess % 60;
+                        const excess = mins - 180; const exHours = Math.floor(excess / 60); const rem = excess % 60;
                         let extra = exHours * 100 + (rem > 0 ? (rem < 30 ? 50 : 100) : 0);
-                        fee = 400 + extra;
-                        logs.push(`基础400 + 超时${extra}元`);
+                        fee = 400 + extra; logs.push(`基础400 + 超时${extra}元`);
                     }
                 }
                 if (!procState.isCancelled && procState.isLeader) { fee += 100; logs.push("组长: +100元"); }
@@ -298,62 +231,31 @@
 
             return (
                 <div className="fade-in space-y-6">
-                     <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg mb-4">
+                    <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg mb-4">
                         <button onClick={() => setMode('comprehensive')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${mode === 'comprehensive' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>综合评标 (2025)</button>
                         <button onClick={() => setMode('procurement')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${mode === 'procurement' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>政府采购 (2023)</button>
                     </div>
-
                     {mode === 'comprehensive' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                             <div className="space-y-4">
-                                <label className="flex items-center gap-2 border p-3 rounded-lg bg-white">
-                                    <input type="checkbox" checked={compState.isCancelled} onChange={e => setCompState({...compState, isCancelled: e.target.checked})} />
-                                    <span className="text-sm">项目取消/回避</span>
-                                </label>
+                                <label className="flex items-center gap-2 border p-3 rounded-lg bg-white"><input type="checkbox" checked={compState.isCancelled} onChange={e => setCompState({...compState, isCancelled: e.target.checked})} /><span className="text-sm">项目取消/回避</span></label>
                                 {!compState.isCancelled && (
                                     <>
                                         <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
                                             <label className="text-sm font-bold text-blue-800">评审时长</label>
                                             <div className="flex gap-2 mt-2">
-                                                <input type="number" min="0" value={compState.durationH} onChange={e => setCompState({...compState, durationH: +e.target.value})} className="w-20 p-2 border rounded" />
-                                                <span className="self-center text-sm">小时</span>
-                                                <input type="number" min="0" max="59" value={compState.durationM} onChange={e => setCompState({...compState, durationM: +e.target.value})} className="w-20 p-2 border rounded" />
-                                                <span className="self-center text-sm">分</span>
+                                                <input type="number" value={compState.durationH} onChange={e => setCompState({...compState, durationH: +e.target.value})} className="w-20 p-2 border rounded" /><span>小时</span>
+                                                <input type="number" value={compState.durationM} onChange={e => setCompState({...compState, durationM: +e.target.value})} className="w-20 p-2 border rounded" /><span>分</span>
                                             </div>
                                         </div>
-                                        <label className="flex items-center gap-2">
-                                            <input type="checkbox" checked={compState.isOvernight} onChange={e => setCompState({...compState, isOvernight: e.target.checked})} />
-                                            <span className="text-sm font-medium">隔夜评标</span>
-                                        </label>
-                                        {compState.isOvernight && (
-                                            <div className="p-4 bg-indigo-50 rounded-lg border border-indigo-100">
-                                                <label className="text-sm font-bold text-indigo-800">第二日时长</label>
-                                                <div className="flex gap-2 mt-2">
-                                                    <input type="number" min="0" value={compState.day2H} onChange={e => setCompState({...compState, day2H: +e.target.value})} className="w-20 p-2 border rounded" />
-                                                    <span className="self-center text-sm">小时</span>
-                                                    <input type="number" min="0" max="59" value={compState.day2M} onChange={e => setCompState({...compState, day2M: +e.target.value})} className="w-20 p-2 border rounded" />
-                                                    <span className="self-center text-sm">分</span>
-                                                </div>
-                                            </div>
-                                        )}
-                                        <label className="flex items-center gap-2">
-                                            <input type="checkbox" checked={compState.isChair} onChange={e => setCompState({...compState, isChair: e.target.checked})} />
-                                            <span className="text-sm font-medium">我是主任评委 (+100)</span>
-                                        </label>
+                                        <label className="flex items-center gap-2"><input type="checkbox" checked={compState.isOvernight} onChange={e => setCompState({...compState, isOvernight: e.target.checked})} /><span className="text-sm font-medium">隔夜评标</span></label>
+                                        <label className="flex items-center gap-2"><input type="checkbox" checked={compState.isChair} onChange={e => setCompState({...compState, isChair: e.target.checked})} /><span className="text-sm font-medium">我是主任评委 (+100)</span></label>
                                     </>
                                 )}
                             </div>
                             <Card className="bg-slate-50 p-6 flex flex-col justify-between">
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-500 uppercase">费用计算</h4>
-                                    <div className="mt-4 space-y-2 text-sm text-slate-600">
-                                        {compResult.logs.map((l, i) => <div key={i} className="flex justify-between border-b border-slate-200 pb-1"><span>{l.split(':')[0]}</span><span className="font-mono">{l.split(':')[1]}</span></div>)}
-                                    </div>
-                                </div>
-                                <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-end">
-                                    <span className="text-gray-600">税前合计</span>
-                                    <span className="text-3xl font-bold text-blue-600">¥{compResult.fee}</span>
-                                </div>
+                                <div><h4 className="text-sm font-bold text-slate-500">费用明细</h4><div className="mt-4 space-y-2 text-sm text-slate-600">{compResult.logs.map((l, i) => <div key={i} className="flex justify-between border-b pb-1"><span>{l.split(':')[0]}</span><span className="font-mono">{l.split(':')[1]}</span></div>)}</div></div>
+                                <div className="mt-6 pt-4 border-t flex justify-between items-end"><span>税前合计</span><span className="text-3xl font-bold text-blue-600">¥{compResult.fee}</span></div>
                             </Card>
                         </div>
                     ) : (
@@ -364,46 +266,18 @@
                                     <button onClick={() => setProcState({...procState, isRemote: true})} className={`flex-1 py-1 text-sm border rounded ${procState.isRemote ? 'bg-emerald-100 border-emerald-300 text-emerald-800' : 'bg-white'}`}>异地</button>
                                 </div>
                                 {!procState.isCancelled && (
-                                    <>
-                                        <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
-                                            <label className="text-sm font-bold text-emerald-800">评审时长</label>
-                                            <div className="flex gap-2 mt-2">
-                                                <input type="number" min="0" value={procState.durationH} onChange={e => setProcState({...procState, durationH: +e.target.value})} className="w-20 p-2 border rounded" />
-                                                <span className="text-sm self-center">小时</span>
-                                                <input type="number" min="0" max="59" value={procState.durationM} onChange={e => setProcState({...procState, durationM: +e.target.value})} className="w-20 p-2 border rounded" />
-                                                <span className="text-sm self-center">分</span>
-                                            </div>
+                                    <div className="p-4 bg-emerald-50 rounded-lg border border-emerald-100">
+                                        <label className="text-sm font-bold text-emerald-800">评审时长</label>
+                                        <div className="flex gap-2 mt-2">
+                                            <input type="number" value={procState.durationH} onChange={e => setProcState({...procState, durationH: +e.target.value})} className="w-20 p-2 border rounded" /><span>小时</span>
+                                            <input type="number" value={procState.durationM} onChange={e => setProcState({...procState, durationM: +e.target.value})} className="w-20 p-2 border rounded" /><span>分</span>
                                         </div>
-                                        {procState.isRemote && (
-                                            <select value={procState.level} onChange={e => setProcState({...procState, level: e.target.value})} className="w-full p-2 border rounded text-sm">
-                                                <option value="normal">省内异地 (400-600/半天)</option>
-                                                <option value="senior">外省副高 (500-800/半天)</option>
-                                                <option value="professor">外省正高 (1000-1500/半天)</option>
-                                                <option value="academician">院士 (2000/半天)</option>
-                                            </select>
-                                        )}
-                                        <label className="flex items-center gap-2">
-                                            <input type="checkbox" checked={procState.isLeader} onChange={e => setProcState({...procState, isLeader: e.target.checked})} />
-                                            <span className="text-sm font-medium">我是组长 (+100)</span>
-                                        </label>
-                                    </>
+                                    </div>
                                 )}
-                                <label className="flex items-center gap-2 border p-3 rounded-lg bg-white">
-                                    <input type="checkbox" checked={procState.isCancelled} onChange={e => setProcState({...procState, isCancelled: e.target.checked})} />
-                                    <span className="text-sm">项目取消/回避</span>
-                                </label>
                             </div>
                             <Card className="bg-slate-50 p-6 flex flex-col justify-between">
-                                <div>
-                                    <h4 className="text-sm font-bold text-slate-500 uppercase">费用计算</h4>
-                                    <div className="mt-4 space-y-2 text-sm text-slate-600">
-                                        {procResult.logs.map((l, i) => <div key={i} className="flex justify-between border-b border-slate-200 pb-1"><span>{l.split(':')[0]}</span><span className="font-mono">{l.split(':')[1]}</span></div>)}
-                                    </div>
-                                </div>
-                                <div className="mt-6 pt-4 border-t border-slate-200 flex justify-between items-end">
-                                    <span className="text-gray-600">税后合计</span>
-                                    <span className="text-3xl font-bold text-emerald-600">¥{procResult.fee}</span>
-                                </div>
+                                <div><h4 className="text-sm font-bold text-slate-500">费用明细</h4><div className="mt-4 space-y-2 text-sm text-slate-600">{procResult.logs.map((l, i) => <div key={i} className="flex justify-between border-b pb-1"><span>{l.split(':')[0]}</span><span className="font-mono">{l.split(':')[1]}</span></div>)}</div></div>
+                                <div className="mt-6 pt-4 border-t flex justify-between items-end"><span>税后合计</span><span className="text-3xl font-bold text-emerald-600">¥{procResult.fee}</span></div>
                             </Card>
                         </div>
                     )}
@@ -411,101 +285,51 @@
             );
         };
 
-        // --- Tool 3: 建设工程交易服务费计算器 ---
+        // --- Tool 3: 湖南省交易服务费 ---
         const Tool3_TransactionFee = () => {
             const [amount, setAmount] = useState("");
             const [type, setType] = useState("construction");
             const [isSpecial, setIsSpecial] = useState(false);
-
             const calculate = useMemo(() => {
-                let total = 0;
-                if (isSpecial) {
-                    total = 2000;
-                } else {
+                let total = 0; if (isSpecial) total = 2000;
+                else {
                     const val = parseFloat(amount);
-                    if (!val || val < 0) total = 0;
-                    else if (val <= 100) total = 1000;
-                    else if (val <= 500) total = 2000;
-                    else if (val <= 1000) total = 5000;
-                    else if (val <= 3000) total = 12000;
-                    else if (val <= 5000) total = 28000;
-                    else if (val <= 10000) total = 40000;
-                    else total = 50000;
+                    if (!val || val < 0) total = 0; else if (val <= 100) total = 1000; else if (val <= 500) total = 2000;
+                    else if (val <= 1000) total = 5000; else if (val <= 3000) total = 12000; else if (val <= 5000) total = 28000;
+                    else if (val <= 10000) total = 40000; else total = 50000;
                 }
-                
-                let tendererPart = 0, winnerPart = 0;
-                if (type === 'construction') {
-                    tendererPart = Math.round(total * 0.4);
-                    winnerPart = Math.round(total * 0.6);
-                } else {
-                    winnerPart = total;
-                }
-
+                let tendererPart = (type === 'construction') ? Math.round(total * 0.4) : 0;
+                let winnerPart = (type === 'construction') ? Math.round(total * 0.6) : total;
                 return { total, tendererPart, winnerPart };
             }, [amount, type, isSpecial]);
-
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
                     <div className="space-y-6">
-                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-                            <p className="text-sm text-blue-700">依据：湘发改价费规〔2024〕292号</p>
-                        </div>
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">依据：湘发改价费规〔2024〕292号</div>
                         <InputGroup label="项目类型">
                             <div className="grid grid-cols-2 gap-4">
-                                <div onClick={() => setType('construction')} className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${type === 'construction' ? 'border-blue-600 bg-blue-50' : 'border-slate-200 bg-white hover:border-blue-300'}`}>
-                                    <div className="font-bold text-slate-800 flex justify-between">施工/装修/物资 <i className="fas fa-hard-hat text-blue-500"></i></div>
-                                    <div className="text-xs text-slate-500 mt-1">分摊: 招标40% / 中标60%</div>
-                                </div>
-                                <div onClick={() => setType('service')} className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${type === 'service' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200 bg-white hover:border-indigo-300'}`}>
-                                    <div className="font-bold text-slate-800 flex justify-between">勘察/设计/监理 <i className="fas fa-pencil-ruler text-indigo-500"></i></div>
-                                    <div className="text-xs text-slate-500 mt-1">分摊: 中标方 100%</div>
-                                </div>
+                                <div onClick={() => setType('construction')} className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${type === 'construction' ? 'border-blue-600 bg-blue-50' : 'border-slate-200'}`}>施工/装修/物资 (40/60)</div>
+                                <div onClick={() => setType('service')} className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${type === 'service' ? 'border-indigo-600 bg-indigo-50' : 'border-slate-200'}`}>勘察/设计/监理 (100%中标)</div>
                             </div>
                         </InputGroup>
-
-                        <div>
-                            <div className="flex justify-between mb-1">
-                                <label className="text-sm font-semibold text-slate-700">中标金额</label>
-                                <label className="text-sm flex items-center gap-1 cursor-pointer">
-                                    <input type="checkbox" checked={isSpecial} onChange={e => setIsSpecial(e.target.checked)} /> 
-                                    <span className="text-slate-600">难以计算中标额</span>
-                                </label>
-                            </div>
-                            <div className="relative">
-                                <input 
-                                    type="number" 
-                                    value={isSpecial ? '' : amount} 
-                                    onChange={e => setAmount(e.target.value)} 
-                                    disabled={isSpecial}
-                                    placeholder={isSpecial ? "按固定标准收费" : "请输入金额"}
-                                    className={`w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pr-12 ${isSpecial ? 'bg-gray-100 cursor-not-allowed' : 'bg-white'}`}
-                                />
-                                <span className="absolute right-4 top-3.5 text-slate-500">万元</span>
-                            </div>
-                        </div>
+                        <InputGroup label="中标金额" suffix="万元">
+                            <input type="number" disabled={isSpecial} value={isSpecial ? '' : amount} onChange={e => setAmount(e.target.value)} className="w-full p-3 border rounded-lg focus:ring-2 focus:ring-blue-500" placeholder={isSpecial ? "固定标准收费" : "请输入金额"} />
+                        </InputGroup>
+                        <label className="flex items-center gap-2 cursor-pointer"><input type="checkbox" checked={isSpecial} onChange={e => setIsSpecial(e.target.checked)} /><span className="text-sm">难以计算中标额 (按2000元计)</span></label>
                     </div>
-
-                    <Card className="bg-slate-50 p-6 flex flex-col justify-center">
-                        <div className="text-center pb-6 border-b border-slate-200">
-                            <div className="text-sm text-slate-500 font-bold uppercase mb-1">交易服务费总额 (按宗)</div>
-                            <div className="text-4xl font-bold text-slate-900">{formatCurrency(calculate.total)} <span className="text-sm text-slate-500 font-normal">元</span></div>
-                        </div>
+                    <Card className="bg-slate-50 p-6 flex flex-col justify-center text-center">
+                        <div className="text-sm text-slate-500 font-bold uppercase mb-1">交易服务费总额</div>
+                        <div className="text-4xl font-bold text-slate-900">{formatCurrency(calculate.total)} <span className="text-sm font-normal">元</span></div>
                         <div className="grid grid-cols-2 gap-4 mt-6">
-                            <div className="bg-white p-4 rounded-lg border border-slate-100 text-center">
-                                <div className="text-xs text-slate-500 mb-1">招标单位承担 ({type==='construction'?'40%':'0%'})</div>
-                                <div className="text-xl font-bold text-blue-600">{formatCurrency(calculate.tendererPart)}</div>
-                            </div>
-                            <div className="bg-white p-4 rounded-lg border border-slate-100 text-center">
-                                <div className="text-xs text-slate-500 mb-1">中标单位承担 ({type==='construction'?'60%':'100%'})</div>
-                                <div className="text-xl font-bold text-green-600">{formatCurrency(calculate.winnerPart)}</div>
-                            </div>
+                            <div className="bg-white p-4 rounded-lg border"><div>招标方承担</div><div className="text-xl font-bold text-blue-600">{formatCurrency(calculate.tendererPart)}</div></div>
+                            <div className="bg-white p-4 rounded-lg border"><div>中标方承担</div><div className="text-xl font-bold text-green-600">{formatCurrency(calculate.winnerPart)}</div></div>
                         </div>
                     </Card>
                 </div>
-            )
+            );
         };
 
-        // --- Tool 4: 工程设计收费计算器 ---
+        // --- Tool 4: 工程设计收费 ---
         const Tool4_DesignFee = () => {
             const [invest, setInvest] = useState("");
             const [profCoeff, setProfCoeff] = useState(1.0);
@@ -514,28 +338,23 @@
             const [floatRate, setFloatRate] = useState(0);
 
             const result = useMemo(() => {
-                const val = parseFloat(invest);
-                if (!val || val < 0) return { basePrice: 0, basicFee: 0, final: 0 };
-
+                const val = parseFloat(invest); if (!val || val < 0) return { basePrice: 0, basicFee: 0, final: 0 };
                 const table = [
                     {x:200,y:9.0},{x:500,y:20.9},{x:1000,y:38.8},{x:3000,y:103.8},{x:5000,y:163.9},
                     {x:8000,y:249.6},{x:10000,y:304.8},{x:20000,y:566.8},{x:40000,y:1054.0},{x:60000,y:1515.2},
                     {x:80000,y:1960.1},{x:100000,y:2393.4},{x:200000,y:4450.8},{x:400000,y:8276.7},
                     {x:600000,y:11897.5},{x:800000,y:15391.4},{x:1000000,y:18793.8},{x:2000000,y:34948.9}
                 ];
-
                 let basePrice = 0;
                 if (val > 2000000) basePrice = val * 0.016;
                 else if (val <= 200) basePrice = (val/200) * 9.0;
                 else {
                     for(let i=0; i<table.length-1; i++) {
                         if (val >= table[i].x && val <= table[i+1].x) {
-                            basePrice = table[i].y + (table[i+1].y - table[i].y) * (val - table[i].x) / (table[i+1].x - table[i].x);
-                            break;
+                            basePrice = table[i].y + (table[i+1].y - table[i].y) * (val - table[i].x) / (table[i+1].x - table[i].x); break;
                         }
                     }
                 }
-
                 const basicFee = basePrice * profCoeff * complexCoeff * addCoeff;
                 const final = basicFee * (1 + floatRate/100);
                 return { basePrice, basicFee, final };
@@ -544,153 +363,77 @@
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 fade-in">
                     <div className="space-y-4">
-                         <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-                            <p className="text-sm text-blue-700">依据：计价格[2002]10号</p>
-                        </div>
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">依据：计价格[2002]10号</div>
                         <InputGroup label="计费额 (概算投资)" suffix="万元">
-                            <input type="number" value={invest} onChange={e => setInvest(e.target.value)} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pr-10" placeholder="例如 5000" />
+                            <input type="number" value={invest} onChange={e => setInvest(e.target.value)} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" placeholder="例如 5000" />
                         </InputGroup>
                         <InputGroup label="专业分类系数">
                             <select value={profCoeff} onChange={e => setProfCoeff(e.target.value)} className="w-full p-2 border rounded-lg bg-white">
-                                <option value="1.0">建筑、市政 (1.0)</option>
-                                <option value="1.1">人防、园林、地铁 (1.1)</option>
-                                <option value="0.9">公路、城市道路 (0.9)</option>
-                                <option value="1.2">石油化工、水利水电 (1.2)</option>
-                                <option value="0.8">风力发电 (0.8)</option>
+                                <option value="1.0">建筑、市政 (1.0)</option><option value="1.1">人防、园林、地铁 (1.1)</option><option value="0.9">公路、城市道路 (0.9)</option><option value="1.2">石油化工、水利水电 (1.2)</option>
                             </select>
                         </InputGroup>
-                        <InputGroup label="复杂程度">
-                            <div className="flex gap-2">
-                                {[0.85, 1.0, 1.15].map(v => (
-                                    <button key={v} onClick={() => setComplexCoeff(v)} className={`flex-1 py-2 text-sm border rounded ${complexCoeff === v ? 'bg-blue-600 text-white' : 'bg-white'}`}>
-                                        {v === 0.85 ? '简单(I级)' : v === 1.0 ? '一般(II级)' : '复杂(III级)'}
-                                    </button>
-                                ))}
-                            </div>
-                        </InputGroup>
-                         <div className="grid grid-cols-2 gap-4">
-                            <InputGroup label="附加系数" subLabel="无则1.0">
-                                <input type="number" step="0.1" value={addCoeff} onChange={e => setAddCoeff(e.target.value)} className="w-full p-2 border rounded-lg" />
-                            </InputGroup>
-                            <InputGroup label="浮动幅度" suffix="%">
-                                <input type="number" value={floatRate} onChange={e => setFloatRate(e.target.value)} className="w-full p-2 border rounded-lg pr-8" />
-                            </InputGroup>
-                        </div>
                     </div>
-
                     <div className="space-y-6">
                         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
                             <h3 className="text-blue-200 text-sm font-bold uppercase tracking-wider mb-2">设计收费总额</h3>
                             <div className="text-4xl font-bold">{formatCurrency(result.final)} <span className="text-lg text-blue-200 font-normal">万元</span></div>
                         </div>
-                        <Card className="bg-slate-50 p-4 text-sm space-y-3">
-                            <div className="flex justify-between border-b pb-2"><span>收费基价 (插值)</span><span className="font-bold">{formatCurrency(result.basePrice)} 万元</span></div>
-                            <div className="flex justify-between"><span>专业系数</span><span>{profCoeff}</span></div>
-                            <div className="flex justify-between"><span>复杂系数</span><span>{complexCoeff}</span></div>
-                            <div className="flex justify-between"><span>附加系数</span><span>{addCoeff}</span></div>
-                            <div className="flex justify-between border-t pt-2 mt-2"><span>基本收费</span><span className="font-bold">{formatCurrency(result.basicFee)} 万元</span></div>
-                            <div className="flex justify-between"><span>浮动</span><span>{floatRate}%</span></div>
-                        </Card>
                     </div>
                 </div>
             );
         };
 
-        // --- Tool 5: 建设工程监理费用计算器 ---
+        // --- Tool 5: 建设工程监理费用 ---
         const Tool5_SupervisionFee = () => {
             const [invest, setInvest] = useState("");
             const [indCoeff, setIndCoeff] = useState(1.0);
             const [compCoeff, setCompCoeff] = useState(1.0);
-            const [elev, setElev] = useState("");
             const [floatRate, setFloatRate] = useState(0);
 
             const result = useMemo(() => {
-                const val = parseFloat(invest);
-                if (!val || val < 0) return { base: 0, final: 0 };
-                
-                // Table interpolation logic for supervision
+                const val = parseFloat(invest); if (!val || val < 0) return { base: 0, final: 0 };
                 const table = [
                     {l:500,v:16.5}, {l:1000,v:30.1}, {l:3000,v:78.1}, {l:5000,v:120.8}, {l:8000,v:181.0},
                     {l:10000,v:218.6}, {l:20000,v:393.4}, {l:40000,v:708.2}, {l:60000,v:991.4}, {l:80000,v:1255.8},
                     {l:100000,v:1507.0}, {l:200000,v:2712.5}, {l:400000,v:4882.6}, {l:600000,v:6835.6},
                     {l:800000,v:8658.4}, {l:1000000,v:10390.1}
                 ];
-
-                let base = 0;
-                if (val < 500) base = (val/500)*16.5;
-                else if (val > 1000000) base = val * 0.01039;
+                let base = 0; if (val < 500) base = (val/500)*16.5; else if (val > 1000000) base = val * 0.01039;
                 else {
                     for(let i=0; i<table.length-1; i++) {
-                         if (val >= table[i].l && val <= table[i+1].l) {
-                             base = table[i].v + (val - table[i].l) * (table[i+1].v - table[i].v) / (table[i+1].l - table[i].l);
-                             break;
-                         }
+                        if (val >= table[i].l && val <= table[i+1].l) {
+                            base = table[i].v + (val - table[i].l) * (table[i+1].v - table[i].v) / (table[i+1].l - table[i].l); break;
+                        }
                     }
                 }
-
-                let elCoeff = 1.0;
-                const h = parseFloat(elev);
-                if (h > 2000) elCoeff = h <= 3000 ? 1.1 : (h <= 3500 ? 1.2 : 1.3);
-
-                const final = base * indCoeff * compCoeff * elCoeff * (1 + floatRate/100);
-                return { base, final, elCoeff };
-            }, [invest, indCoeff, compCoeff, elev, floatRate]);
+                const final = base * indCoeff * compCoeff * (1 + floatRate/100);
+                return { base, final };
+            }, [invest, indCoeff, compCoeff, floatRate]);
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 fade-in">
                     <div className="space-y-4">
-                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-                            <p className="text-sm text-blue-700">依据：发改价格〔2007〕670号</p>
-                        </div>
-                         <InputGroup label="计费额 (建安费)" suffix="万元">
-                            <input type="number" value={invest} onChange={e => setInvest(e.target.value)} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pr-10" />
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">依据：发改价格〔2007〕670号</div>
+                        <InputGroup label="计费额 (建安费)" suffix="万元">
+                            <input type="number" value={invest} onChange={e => setInvest(e.target.value)} className="w-full p-2 border rounded-lg focus:ring-2 focus:ring-blue-500 outline-none" />
                         </InputGroup>
                         <InputGroup label="专业系数">
                             <select value={indCoeff} onChange={e => setIndCoeff(e.target.value)} className="w-full p-2 border rounded-lg bg-white">
-                                <option value="1.0">建筑、市政、火电、铁路 (1.0)</option>
-                                <option value="0.8">园林绿化 (0.8)</option>
-                                <option value="0.9">矿山、风电、机场 (0.9)</option>
-                                <option value="1.1">地铁、桥梁、隧道 (1.1)</option>
-                                <option value="1.2">核能、水电、水库 (1.2)</option>
+                                <option value="1.0">建筑、市政、火电 (1.0)</option><option value="0.8">园林绿化 (0.8)</option><option value="1.1">地铁、桥梁 (1.1)</option>
                             </select>
                         </InputGroup>
-                        <InputGroup label="复杂程度">
-                            <div className="flex gap-2">
-                                {[0.85, 1.0, 1.15].map(v => (
-                                    <button key={v} onClick={() => setCompCoeff(v)} className={`flex-1 py-2 text-sm border rounded ${compCoeff === v ? 'bg-blue-600 text-white' : 'bg-white'}`}>
-                                        {v === 0.85 ? '简单(I级)' : v === 1.0 ? '一般(II级)' : '复杂(III级)'}
-                                    </button>
-                                ))}
-                            </div>
-                        </InputGroup>
-                        <div className="grid grid-cols-2 gap-4">
-                             <InputGroup label="海拔高程" suffix="米">
-                                <input type="number" value={elev} onChange={e => setElev(e.target.value)} className="w-full p-2 border rounded-lg pr-10" placeholder="<2000" />
-                            </InputGroup>
-                             <InputGroup label="浮动幅度" suffix="%">
-                                <input type="number" value={floatRate} onChange={e => setFloatRate(e.target.value)} className="w-full p-2 border rounded-lg pr-10" />
-                            </InputGroup>
-                        </div>
                     </div>
-                     <div className="space-y-6">
+                    <div className="space-y-6">
                         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
                             <h3 className="text-blue-200 text-sm font-bold uppercase tracking-wider mb-2">监理收费总额</h3>
                             <div className="text-4xl font-bold">{formatCurrency(result.final)} <span className="text-lg text-blue-200 font-normal">万元</span></div>
-                             <div className="text-sm text-blue-200 mt-2">({formatCurrency(result.final * 10000)} 元)</div>
                         </div>
-                        <Card className="bg-slate-50 p-4 text-sm space-y-3">
-                            <div className="flex justify-between border-b pb-2"><span>收费基价</span><span className="font-bold">{formatCurrency(result.base)} 万元</span></div>
-                            <div className="flex justify-between"><span>专业系数</span><span>{indCoeff}</span></div>
-                            <div className="flex justify-between"><span>复杂系数</span><span>{compCoeff}</span></div>
-                            <div className="flex justify-between"><span>高程系数</span><span>{result.elCoeff}</span></div>
-                            <div className="flex justify-between"><span>浮动</span><span>{floatRate}%</span></div>
-                        </Card>
                     </div>
                 </div>
             );
         };
 
-        // --- Tool 6: 建设项目前期工作咨询收费计算器 (Moved from 7 to 6) ---
+        // --- Tool 6: 建设项目前期工作咨询收费 ---
         const Tool6_ConsultingFee = () => {
             const INVEST_BRACKETS = [3000, 10000, 50000, 100000, 500000];
             const SERVICE_TYPES = [
@@ -699,340 +442,126 @@
                 { id: 'proposal_eval', name: '评估项目建议书', fees: [4, 8, 12, 15, 17], over50eRange: [17, 20] },
                 { id: 'feasibility_eval', name: '评估可行性研究报告', fees: [5, 10, 15, 20, 25], over50eRange: [25, 35] }
             ];
-            const INDUSTRIES = [
-                { name: '石化、化工、钢铁', value: 1.3 },
-                { name: '石油、天然气、水利、水电、交通(水运)、化纤', value: 1.2 },
-                { name: '有色、黄金、纺织、轻工、邮电、广播电视、医药、煤炭、火电(含核电)、机械', value: 1.0 },
-                { name: '林业、商业、粮食、建筑', value: 0.8 },
-                { name: '建材、交通(公路)、铁道、市政公用工程', value: 0.7 }
-            ];
-
             const [investAmount, setInvestAmount] = useState('');
             const [investUnit, setInvestUnit] = useState('wanyuan'); 
             const [serviceType, setServiceType] = useState(SERVICE_TYPES[0].id);
             const [industryCoeff, setIndustryCoeff] = useState(1.0);
-            const [complexityCoeff, setComplexityCoeff] = useState(1.0);
 
             const result = useMemo(() => {
-                const invest = parseFloat(investAmount);
-                if (isNaN(invest) || invest <= 0) return null;
-
+                const invest = parseFloat(investAmount); if (isNaN(invest) || invest <= 0) return null;
                 const investInWan = investUnit === 'yiyuan' ? invest * 10000 : invest;
-                const service = SERVICE_TYPES.find(s => s.id === serviceType);
-                if (!service) return null;
-
+                const service = SERVICE_TYPES.find(s => s.id === serviceType); if (!service) return null;
                 let baseFee = 0;
-                let method = '';
-                let isRange = false;
-                let rangeMin = 0;
-                let rangeMax = 0;
-
-                if (investInWan < 3000) {
-                    const y2 = service.fees[0];
-                    baseFee = (investInWan / 3000) * y2; 
-                    method = 'below_min';
-                } else if (investInWan > 500000) {
-                    isRange = true;
-                    rangeMin = service.over50eRange[0];
-                    rangeMax = service.over50eRange[1];
-                    method = 'above_max';
-                } else {
-                    method = 'standard';
+                if (investInWan < 3000) baseFee = (investInWan / 3000) * service.fees[0];
+                else if (investInWan > 500000) baseFee = service.over50eRange[0];
+                else {
                     for (let i = 0; i < INVEST_BRACKETS.length - 1; i++) {
                         if (investInWan >= INVEST_BRACKETS[i] && investInWan <= INVEST_BRACKETS[i+1]) {
-                            const x1 = INVEST_BRACKETS[i];
-                            const x2 = INVEST_BRACKETS[i+1];
-                            const y1 = service.fees[i];
-                            const y2 = service.fees[i+1];
-                            baseFee = y1 + (y2 - y1) * ((investInWan - x1) / (x2 - x1));
-                            break;
+                            const x1 = INVEST_BRACKETS[i], x2 = INVEST_BRACKETS[i+1], y1 = service.fees[i], y2 = service.fees[i+1];
+                            baseFee = y1 + (y2 - y1) * ((investInWan - x1) / (x2 - x1)); break;
                         }
                     }
                 }
-
-                const totalCoeff = industryCoeff * complexityCoeff;
-                return {
-                    investInWan, baseFee, isRange,
-                    rangeMin: rangeMin * totalCoeff,
-                    rangeMax: rangeMax * totalCoeff,
-                    baseRangeMin: rangeMin,
-                    baseRangeMax: rangeMax,
-                    finalFee: baseFee * totalCoeff,
-                    method, totalCoeff
-                };
-            }, [investAmount, investUnit, serviceType, industryCoeff, complexityCoeff]);
+                return { finalFee: baseFee * industryCoeff };
+            }, [investAmount, investUnit, serviceType, industryCoeff]);
 
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-8 fade-in">
                     <div className="space-y-5">
-                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4">
-                            <p className="text-sm text-blue-700">依据：计价格[1999]1283号</p>
-                        </div>
-
-                        <div>
-                            <InputGroup label="1. 估算投资额">
-                                <div className="flex">
-                                    <input 
-                                        type="number" 
-                                        value={investAmount} 
-                                        onChange={e => setInvestAmount(e.target.value)} 
-                                        className="w-full p-2 border rounded-l-lg focus:ring-2 focus:ring-blue-500 outline-none" 
-                                        placeholder="请输入金额" 
-                                    />
-                                    <select 
-                                        value={investUnit} 
-                                        onChange={e => setInvestUnit(e.target.value)} 
-                                        className="bg-slate-100 border border-l-0 rounded-r-lg px-3 text-sm text-slate-700 outline-none"
-                                    >
-                                        <option value="wanyuan">万元</option>
-                                        <option value="yiyuan">亿元</option>
-                                    </select>
-                                </div>
-                            </InputGroup>
-                        </div>
-
-                        <InputGroup label="2. 咨询项目类型">
-                            <div className="space-y-2">
-                                {SERVICE_TYPES.map(type => (
-                                    <label key={type.id} className={`flex items-center p-3 border rounded-lg cursor-pointer transition-all ${serviceType === type.id ? 'bg-blue-50 border-blue-500 ring-1 ring-blue-500' : 'hover:bg-slate-50'}`}>
-                                        <input type="radio" name="serviceType" value={type.id} checked={serviceType === type.id} onChange={e => setServiceType(e.target.value)} className="text-blue-600" />
-                                        <span className="ml-3 text-sm text-slate-700">{type.name}</span>
-                                    </label>
-                                ))}
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">依据：计价格[1999]1283号</div>
+                        <InputGroup label="估算投资额">
+                            <div className="flex">
+                                <input type="number" value={investAmount} onChange={e => setInvestAmount(e.target.value)} className="w-full p-2 border rounded-l-lg" />
+                                <select value={investUnit} onChange={e => setInvestUnit(e.target.value)} className="bg-slate-100 border border-l-0 rounded-r-lg px-3"><option value="wanyuan">万元</option><option value="yiyuan">亿元</option></select>
                             </div>
                         </InputGroup>
-
-                        <InputGroup label="3. 行业调整系数">
-                            <select value={industryCoeff} onChange={e => setIndustryCoeff(parseFloat(e.target.value))} className="w-full p-2 border rounded-lg bg-white">
-                                {INDUSTRIES.map((ind, i) => (
-                                    <option key={i} value={ind.value}>{ind.value} - {ind.name}</option>
-                                ))}
+                        <InputGroup label="咨询项目类型">
+                            <select value={serviceType} onChange={e => setServiceType(e.target.value)} className="w-full p-2 border rounded-lg">
+                                {SERVICE_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                         </InputGroup>
-
-                        <InputGroup label="4. 复杂程度调整系数" subLabel={`当前: ${complexityCoeff}`}>
-                            <div className="flex items-center gap-4">
-                                <input 
-                                    type="range" min="0.8" max="1.2" step="0.01" 
-                                    value={complexityCoeff} 
-                                    onChange={e => setComplexityCoeff(parseFloat(e.target.value))} 
-                                    className="w-full h-2 bg-slate-200 rounded-lg appearance-none cursor-pointer"
-                                />
-                                <div className="text-xs text-slate-400 w-20 text-right">0.8 ~ 1.2</div>
-                            </div>
-                            <div className="flex justify-between text-xs text-slate-400 mt-1">
-                                <span>简单(0.8)</span><span>一般(1.0)</span><span>复杂(1.2)</span>
-                            </div>
-                        </InputGroup>
                     </div>
-
                     <div className="space-y-6">
-                        {!result ? (
-                            <Card className="p-8 text-center text-slate-400 h-full flex flex-col items-center justify-center">
-                                <i className="fas fa-calculator text-4xl mb-4 opacity-20"></i>
-                                <p>请输入估算投资额开始计算</p>
-                            </Card>
-                        ) : (
-                            <>
-                                <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 text-white shadow-lg relative overflow-hidden">
-                                    <h3 className="text-blue-100 text-sm font-bold uppercase tracking-wider mb-2">收费基准价 (含系数)</h3>
-                                    {result.isRange ? (
-                                        <div>
-                                            <div className="text-3xl font-bold mb-1">{formatCurrency(result.rangeMin)} ~ {formatCurrency(result.rangeMax)} <span className="text-lg font-normal">万元</span></div>
-                                            <span className="text-xs bg-white/20 px-2 py-1 rounded">需协商确定 (50亿元以上)</span>
-                                        </div>
-                                    ) : (
-                                        <div>
-                                            <div className="text-4xl font-bold">{formatCurrency(result.finalFee)} <span className="text-lg font-normal">万元</span></div>
-                                            {result.method === 'below_min' && <div className="text-xs text-orange-200 mt-2"><i className="fas fa-exclamation-triangle"></i> 3000万元以下 (线性折算参考)</div>}
-                                        </div>
-                                    )}
-                                </div>
-
-                                <Card className="bg-slate-50 p-4 text-sm space-y-3">
-                                    <div className="font-bold text-slate-700 border-b pb-2 mb-2">计算详情</div>
-                                    
-                                    <div className="flex justify-between items-center">
-                                        <span className="text-slate-600">基础收费 (插值)</span>
-                                        <span className="font-mono font-bold">
-                                            {result.isRange ? `${result.baseRangeMin}-${result.baseRangeMax}` : formatCurrency(result.baseFee)} 万元
-                                        </span>
-                                    </div>
-                                    <div className="text-xs text-slate-400 text-right mb-2">对应投资额: {formatCurrency(result.investInWan)} 万元</div>
-                                    
-                                    <div className="flex justify-between border-t pt-2 border-slate-200">
-                                        <span>行业调整系数</span>
-                                        <span className="font-mono">× {industryCoeff}</span>
-                                    </div>
-                                    <div className="flex justify-between">
-                                        <span>复杂程度系数</span>
-                                        <span className="font-mono">× {complexityCoeff}</span>
-                                    </div>
-
-                                    <div className="bg-slate-100 p-2 rounded mt-2 text-xs text-slate-500 font-mono break-all">
-                                        公式: {result.isRange ? `[${result.baseRangeMin}~${result.baseRangeMax}]` : formatCurrency(result.baseFee)} × {industryCoeff} × {complexityCoeff}
-                                    </div>
-                                </Card>
-
-                                <div className="bg-orange-50 p-4 rounded-lg border border-orange-100 text-xs text-orange-800 space-y-1">
-                                    <p className="font-bold mb-1"><i className="fas fa-info-circle"></i> 注意事项：</p>
-                                    <p>1. 3000万元以下的收费标准由各省制定，本计算器采用线性插值作为参考。</p>
-                                    <p>2. 单独编制项目建议书/可研报告，若需进行勘察、试验，费用另行协商。</p>
-                                </div>
-                            </>
+                        {result && (
+                            <div className="bg-gradient-to-br from-blue-600 to-indigo-700 rounded-xl p-6 text-white shadow-lg">
+                                <h3 className="text-blue-100 text-sm font-bold uppercase tracking-wider mb-2">收费基准价</h3>
+                                <div className="text-4xl font-bold">{formatCurrency(result.finalFee)} <span className="text-lg font-normal">万元</span></div>
+                            </div>
                         )}
                     </div>
                 </div>
             );
         };
 
-        // --- Tool 7: 依法招标项目时限计算器 (New Integrated Tool) ---
+        // --- Tool 7: 依法招标项目时限计算器 ---
         const Tool7_TimeLimit = () => {
-            const [mode, setMode] = useState('forward'); // 'forward' | 'backward'
+            const [mode, setMode] = useState('forward'); 
             const [baseDate, setBaseDate] = useState(formatDate(new Date()));
-            const [tenderType, setTenderType] = useState('post-qual'); // 'post-qual' (资格后审) | 'pre-qual' (资格预审)
+            const [tenderType, setTenderType] = useState('post-qual'); 
 
-            // Timeline Node Component
-            const TimelineItem = ({ date, title, subtitle, desc, regulation, isLast }) => (
-                <div className="flex gap-4 slide-in print-break">
-                    <div className="flex flex-col items-center">
-                        <div className={`w-4 h-4 rounded-full mt-1.5 ${isLast ? 'bg-teal-500 ring-4 ring-teal-100' : 'bg-slate-300'}`}></div>
-                        {!isLast && <div className="w-0.5 flex-1 bg-slate-200 my-1"></div>}
-                    </div>
-                    <div className="pb-8 flex-1">
-                        <div className="flex flex-col sm:flex-row sm:items-center justify-between bg-white p-4 rounded-lg border border-slate-200 shadow-sm hover:shadow-md transition-shadow">
-                            <div>
-                                <div className="text-sm font-semibold text-teal-600 uppercase tracking-wider mb-1">{subtitle}</div>
-                                <h3 className="font-bold text-slate-800 text-lg">{title}</h3>
-                                <p className="text-slate-600 text-sm mt-1">{desc}</p>
-                                {regulation && (
-                                    <div className="mt-2 inline-flex items-center gap-1.5 px-2 py-1 bg-slate-100 rounded text-xs text-slate-500">
-                                        <i className="fas fa-file-alt text-teal-500"></i>
-                                        {regulation}
-                                    </div>
-                                )}
-                            </div>
-                            <div className="mt-3 sm:mt-0 sm:text-right">
-                                <div className="text-2xl font-bold text-slate-800 font-mono">
-                                    {date ? formatDate(date) : '--'}
-                                </div>
-                                <div className="text-xs text-slate-400">建议日期 (法定最晚/最早)</div>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-
-            const calculateForward = () => {
+            const forwardEvents = useMemo(() => {
                 if (!baseDate) return [];
                 const start = new Date(baseDate);
-
                 if (tenderType === 'post-qual') {
-                    // 资格后审 (Post-qualification)
-                    const bidDeadline = addDays(baseDate, 20); // Minimum 20 days
+                    const bidDeadline = addDays(baseDate, 20);
                     return [
                         { date: start, title: "上网公告发布日", subtitle: "流程启动", desc: "招标文件开始发出之日", regulation: null },
-                        { date: addDays(baseDate, 5), title: "招标文件发售最短截止期", subtitle: "发售期", desc: "招标文件发售期不得少于5日", regulation: "《招标投标法实施条例》第16条" },
-                        { date: subtractDays(formatDate(bidDeadline), 15), title: "澄清/修改最晚截止时间", subtitle: "答疑环节", desc: "距投标截止时间不足15日的，应顺延截止时间", regulation: "《招标投标法实施条例》第21条" },
-                        { date: subtractDays(formatDate(bidDeadline), 10), title: "潜在投标人提出异议截止", subtitle: "异议环节", desc: "投标截止时间10日前提出", regulation: "《招标投标法实施条例》第23条" },
-                        { date: bidDeadline, title: "最早投标截止/开标时间", subtitle: "关键节点", desc: "自招标文件开始发出之日起不得少于20日", regulation: "《招标投标法》第24条", isLast: true }
-                    ].sort((a, b) => a.date - b.date);
+                        { date: addDays(baseDate, 5), title: "招标文件发售截止", subtitle: "发售期", desc: "发售期不得少于5日", regulation: "条例第16条" },
+                        { date: bidDeadline, title: "最早开标时间", subtitle: "关键节点", desc: "不得少于20日", regulation: "招标投标法第24条", isLast: true }
+                    ];
                 } else {
-                    // 资格预审 (Pre-qualification)
-                    const saleEnd = addDays(baseDate, 5); // Minimum 5 days sale
-                    const submitDeadline = addDays(formatDate(saleEnd), 5); // Minimum 5 days after sale stops
+                    const saleEnd = addDays(baseDate, 5); const submitDeadline = addDays(formatDate(saleEnd), 5);
                     return [
-                        { date: start, title: "资格预审公告发布日", subtitle: "流程启动", desc: "资格预审文件开始发出之日", regulation: null },
-                        { date: saleEnd, title: "资格预审文件发售最短截止期", subtitle: "发售期", desc: "发售期不得少于5日", regulation: "《招标投标法实施条例》第16条" },
-                         { date: subtractDays(formatDate(submitDeadline), 3), title: "澄清/修改最晚截止时间", subtitle: "答疑环节", desc: "距提交申请文件截止时间不足3日的，应顺延", regulation: "《招标投标法实施条例》第21条" },
-                        { date: subtractDays(formatDate(submitDeadline), 2), title: "申请人提出异议截止", subtitle: "异议环节", desc: "提交申请文件截止时间2日前提出", regulation: "《招标投标法实施条例》第22条" },
-                        { date: submitDeadline, title: "资格预审申请提交最早截止", subtitle: "提交截止", desc: "自停止发售之日起不得少于5日", regulation: "《招标投标法实施条例》第17条", isLast: true }
-                    ].sort((a, b) => a.date - b.date);
+                        { date: start, title: "资审公告发布日", subtitle: "流程启动", desc: "资审文件开始发出之日", regulation: null },
+                        { date: saleEnd, title: "文件发售截止", subtitle: "发售期", desc: "不得少于5日", regulation: "条例第16条" },
+                        { date: submitDeadline, title: "资审申请截止", subtitle: "提交截止", desc: "自发售截止起不少于5日", regulation: "条例第17条", isLast: true }
+                    ];
                 }
-            };
+            }, [baseDate, tenderType]);
 
-            const calculateBackward = () => {
+            const backwardDates = useMemo(() => {
                 if (!baseDate) return null;
                 return { threeYears: subtractDays(baseDate, 1095), fiveYears: subtractDays(baseDate, 1825) };
-            };
-
-            const forwardEvents = calculateForward();
-            const backwardDates = calculateBackward();
+            }, [baseDate]);
 
             return (
                 <div className="fade-in space-y-6">
-                    <div className="bg-slate-50 rounded-xl p-1 flex mb-6 border border-slate-200">
-                        <button onClick={() => setMode('forward')} className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${mode === 'forward' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                            <i className="fas fa-clock"></i> 正推：流程时限生成
-                        </button>
-                        <button onClick={() => setMode('backward')} className={`flex-1 py-3 px-4 rounded-lg text-sm font-medium transition-all flex items-center justify-center gap-2 ${mode === 'backward' ? 'bg-white text-teal-600 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-                            <i className="fas fa-history"></i> 倒推：近3年/5年计算
-                        </button>
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <button onClick={() => setMode('forward')} className={`flex-1 py-3 rounded-lg text-sm font-medium ${mode === 'forward' ? 'bg-white shadow text-teal-600' : 'text-slate-500'}`}>正推：流程时限</button>
+                        <button onClick={() => setMode('backward')} className={`flex-1 py-3 rounded-lg text-sm font-medium ${mode === 'backward' ? 'bg-white shadow text-teal-600' : 'text-slate-500'}`}>倒推：业绩期限</button>
                     </div>
-
-                    <div className="bg-white rounded-xl shadow-sm border border-slate-200 p-6">
+                    <div className="bg-white rounded-xl shadow-sm border p-6">
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            <div>
-                                <label className="block text-sm font-medium text-slate-700 mb-2">{mode === 'forward' ? '选择公告发布日期' : '选择评标日期'}</label>
-                                <div className="relative">
-                                    <input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none transition-all" />
-                                    <i className="fas fa-calendar-alt absolute left-3 top-3 text-slate-400"></i>
-                                </div>
-                            </div>
+                            <InputGroup label={mode === 'forward' ? '公告发布日期' : '评标/截止日期'}>
+                                <input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            </InputGroup>
                             {mode === 'forward' && (
-                                <div>
-                                    <label className="block text-sm font-medium text-slate-700 mb-2">项目类型</label>
-                                    <div className="flex bg-slate-100 rounded-lg p-1 border border-slate-200">
-                                        <button onClick={() => setTenderType('post-qual')} className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${tenderType === 'post-qual' ? 'bg-teal-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>资格后审 (普通招标)</button>
-                                        <button onClick={() => setTenderType('pre-qual')} className={`flex-1 py-1.5 px-3 rounded-md text-sm font-medium transition-all ${tenderType === 'pre-qual' ? 'bg-teal-500 text-white shadow-sm' : 'text-slate-600 hover:bg-slate-50'}`}>资格预审</button>
+                                <InputGroup label="招标方式">
+                                    <div className="flex gap-2">
+                                        <button onClick={() => setTenderType('post-qual')} className={`flex-1 py-2 rounded border text-xs ${tenderType === 'post-qual' ? 'bg-teal-500 text-white' : 'bg-white'}`}>资格后审</button>
+                                        <button onClick={() => setTenderType('pre-qual')} className={`flex-1 py-2 rounded border text-xs ${tenderType === 'pre-qual' ? 'bg-teal-500 text-white' : 'bg-white'}`}>资格预审</button>
                                     </div>
-                                </div>
+                                </InputGroup>
                             )}
                         </div>
-
                         {mode === 'forward' ? (
-                            <div className="space-y-2">
-                                <div className="flex items-center justify-between mb-6">
-                                    <h2 className="text-lg font-bold text-slate-800 flex items-center gap-2"><i className="fas fa-check-circle text-teal-500"></i> 关键节点时间表 (法定最低要求)</h2>
-                                    <span className="text-xs text-slate-500 bg-slate-100 px-2 py-1 rounded">自动计算</span>
-                                </div>
-                                <div className="pl-2">
-                                    {forwardEvents.map((event, index) => (
-                                        <TimelineItem key={index} {...event} isLast={index === forwardEvents.length - 1} />
-                                    ))}
-                                </div>
-                                <div className="mt-8 p-4 bg-orange-50 border border-orange-100 rounded-lg flex gap-3 text-sm text-orange-800">
-                                    <i className="fas fa-exclamation-circle mt-0.5"></i>
-                                    <div>
-                                        <p className="font-semibold mb-1">注意：</p>
-                                        <ul className="list-disc pl-4 space-y-1 opacity-90">
-                                            <li>以上时间均为<strong>法定最低时限</strong>，实际操作建议适当延长，不可缩短。</li>
-                                            <li>如遇法定休假日，期限通常顺延至休假日后第一天（建议预留缓冲）。</li>
-                                            {tenderType === 'pre-qual' && <li><strong>资格预审项目：</strong>资格预审通过后，还需计算“投标截止时间”（不少于20日）。</li>}
-                                        </ul>
+                            <div className="space-y-4">
+                                {forwardEvents.map((ev, i) => (
+                                    <div key={i} className="flex gap-4 items-start border-l-2 border-slate-200 pl-4 pb-6 last:pb-0 relative">
+                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-teal-500"></div>
+                                        <div className="flex-1">
+                                            <div className="text-xs text-teal-600 font-bold">{ev.subtitle}</div>
+                                            <div className="font-bold">{ev.title}</div>
+                                            <div className="text-xs text-slate-500">{ev.desc}</div>
+                                        </div>
+                                        <div className="text-right"><div className="text-lg font-mono font-bold">{formatDate(ev.date)}</div></div>
                                     </div>
-                                </div>
+                                ))}
                             </div>
                         ) : (
-                            <div className="animate-fade-in">
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                    <div className="bg-white border-l-4 border-blue-500 rounded-lg shadow-sm p-6 border border-slate-200">
-                                        <div className="text-blue-600 font-semibold mb-1 uppercase tracking-wider text-sm">近三年业绩/信誉</div>
-                                        <div className="text-3xl font-bold text-slate-800 mb-2">{backwardDates ? formatDate(backwardDates.threeYears) : '--'}</div>
-                                        <div className="text-sm text-slate-500 flex items-center gap-1"><i className="fas fa-info-circle"></i> 按 1095 天前推算</div>
-                                    </div>
-                                    <div className="bg-white border-l-4 border-indigo-500 rounded-lg shadow-sm p-6 border border-slate-200">
-                                        <div className="text-indigo-600 font-semibold mb-1 uppercase tracking-wider text-sm">近五年业绩/信誉</div>
-                                        <div className="text-3xl font-bold text-slate-800 mb-2">{backwardDates ? formatDate(backwardDates.fiveYears) : '--'}</div>
-                                        <div className="text-sm text-slate-500 flex items-center gap-1"><i className="fas fa-info-circle"></i> 按 1825 天前推算</div>
-                                    </div>
-                                </div>
-                                <div className="mt-8 p-4 bg-slate-100 rounded-lg">
-                                    <h4 className="font-semibold text-slate-700 mb-2 text-sm">法规依据说明：</h4>
-                                    <p className="text-sm text-slate-600 leading-relaxed">
-                                        依据《民法典》及相关招标示范文本说明，招标文件要求“近三年”或“近五年”的业绩或信誉，通常指从<strong>评标日</strong>往前推算。本工具采用标准的 <strong>1年 = 365天</strong> 进行日历天倒推。
-                                    </p>
-                                </div>
+                            <div className="grid grid-cols-2 gap-6">
+                                <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded"><div>近三年起始</div><div className="text-2xl font-bold">{formatDate(backwardDates?.threeYears)}</div></div>
+                                <div className="p-4 bg-indigo-50 border-l-4 border-indigo-500 rounded"><div>近五年起始</div><div className="text-2xl font-bold">{formatDate(backwardDates?.fiveYears)}</div></div>
                             </div>
                         )}
                     </div>
@@ -1040,322 +569,172 @@
             );
         };
 
-        // --- Tool 8: 投标人顺序随机抽取系统 (Moved from 6 to 8) ---
+        // --- Tool 8: 投标人顺序随机抽取系统 ---
         const Tool8_RandomDraw = () => {
-            const [bidders, setBidders] = useState([]);
-            const [inputMethod, setInputMethod] = useState('text'); // text | file
-            const [textInput, setTextInput] = useState("");
-            const [results, setResults] = useState([]);
-            const fileInputRef = useRef(null);
-            
-            const handleFileUpload = (e) => {
-                const file = e.target.files[0];
-                if (!file) return;
-                const reader = new FileReader();
-                reader.onload = (evt) => {
-                    const data = new Uint8Array(evt.target.result);
-                    const workbook = XLSX.read(data, {type: 'array'});
-                    const ws = workbook.Sheets[workbook.SheetNames[0]];
-                    const json = XLSX.utils.sheet_to_json(ws, {header: 1});
-                    const list = json.flat().filter(item => item && typeof item === 'string' && item.trim().length > 0);
-                    setBidders(list);
-                    setTextInput(list.join('\n'));
-                };
-                reader.readAsArrayBuffer(file);
-            };
-
-            const handleTextChange = (e) => {
-                setTextInput(e.target.value);
-                setBidders(e.target.value.split('\n').filter(s => s.trim()));
-            };
-
-            const shuffle = () => {
-                if (bidders.length < 2) {
-                    alert("请至少输入2个投标人");
-                    return;
-                }
-                let arr = [...bidders];
-                for (let i = arr.length - 1; i > 0; i--) {
-                    const j = Math.floor(Math.random() * (i + 1));
-                    [arr[i], arr[j]] = [arr[j], arr[i]];
-                }
+            const [bidders, setBidders] = useState([]); const [textInput, setTextInput] = useState(""); const [results, setResults] = useState([]);
+            const handleShuffle = () => {
+                const list = textInput.split('\n').filter(s => s.trim());
+                if (list.length < 2) { alert("请至少输入2个单位"); return; }
+                let arr = [...list];
+                for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
                 setResults(arr);
             };
-
             return (
-                <div className="fade-in space-y-6">
-                    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                        <div className="space-y-4">
-                            <div className="flex gap-2 mb-2">
-                                <button onClick={()=>setInputMethod('text')} className={`flex-1 py-2 text-sm border rounded ${inputMethod==='text'?'bg-blue-600 text-white':'bg-white'}`}>手动输入</button>
-                                <button onClick={()=>setInputMethod('file')} className={`flex-1 py-2 text-sm border rounded ${inputMethod==='file'?'bg-blue-600 text-white':'bg-white'}`}>Excel导入</button>
-                            </div>
-                            
-                            {inputMethod === 'text' ? (
-                                <textarea 
-                                    className="w-full h-64 p-3 border rounded-lg focus:ring-2 focus:ring-blue-500" 
-                                    placeholder="请输入投标人名称，每行一个..."
-                                    value={textInput}
-                                    onChange={handleTextChange}
-                                ></textarea>
-                            ) : (
-                                <div className="border-2 border-dashed border-slate-300 rounded-lg p-8 text-center bg-slate-50 hover:bg-slate-100 cursor-pointer" onClick={() => fileInputRef.current.click()}>
-                                    <i className="fas fa-file-excel text-green-600 text-3xl mb-2"></i>
-                                    <p className="text-sm text-slate-600">点击上传Excel文件 (.xlsx/.xls)</p>
-                                    <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".xlsx, .xls" className="hidden" />
-                                    {bidders.length > 0 && <p className="mt-2 text-green-600 font-bold">已加载 {bidders.length} 个投标人</p>}
-                                </div>
-                            )}
-                            
-                            <div className="flex gap-4">
-                                <Button onClick={shuffle} className="w-full text-lg"><i className="fas fa-random"></i> 开始随机抽取</Button>
-                                <Button onClick={() => {setResults([]); setBidders([]); setTextInput('');}} variant="secondary">重置</Button>
-                            </div>
-                        </div>
-
-                        <Card className="bg-slate-50 p-0 overflow-hidden flex flex-col">
-                            <div className="bg-slate-200 p-3 font-bold text-slate-700 flex justify-between items-center">
-                                <span>抽取结果</span>
-                                {results.length > 0 && <span className="text-xs bg-blue-100 text-blue-800 px-2 py-1 rounded-full">共 {results.length} 家</span>}
-                            </div>
-                            <div className="flex-1 overflow-y-auto p-4 max-h-[400px]">
-                                {results.length === 0 ? (
-                                    <div className="text-center text-slate-400 py-10">
-                                        <i className="fas fa-list text-4xl mb-3 opacity-30"></i>
-                                        <p>暂无结果，请先输入名单并开始抽取</p>
-                                    </div>
-                                ) : (
-                                    <table className="w-full text-sm">
-                                        <thead>
-                                            <tr className="border-b-2 border-slate-200">
-                                                <th className="pb-2 text-left w-16">序号</th>
-                                                <th className="pb-2 text-left">投标人名称</th>
-                                            </tr>
-                                        </thead>
-                                        <tbody>
-                                            {results.map((name, idx) => (
-                                                <tr key={idx} className="border-b border-slate-100 last:border-0 hover:bg-white">
-                                                    <td className="py-3 font-bold text-blue-600 pl-2">{idx + 1}</td>
-                                                    <td className="py-3 text-slate-700">{name}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                )}
-                            </div>
-                            {results.length > 0 && (
-                                <div className="p-3 border-t bg-white">
-                                    <Button onClick={() => window.print()} variant="secondary" className="w-full btn-sm text-sm"><i className="fas fa-print"></i> 打印结果</Button>
-                                </div>
-                            )}
-                        </Card>
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
+                    <div className="space-y-4">
+                        <textarea className="w-full h-64 p-3 border rounded-lg" placeholder="请输入单位名称，每行一个..." value={textInput} onChange={e => setTextInput(e.target.value)}></textarea>
+                        <Button onClick={handleShuffle} className="w-full"><i className="fas fa-random"></i> 开始随机抽取</Button>
                     </div>
-                </div>
-            );
-        };
-        
-        // --- Tool 9: Readme Page (Updated for new tool) ---
-        const Tool9_Readme = () => {
-            return (
-                <div className="fade-in max-w-4xl mx-auto space-y-8">
-                    <Card className="p-8">
-                        <div className="text-center mb-8 border-b pb-6">
-                            <h1 className="text-3xl font-bold text-slate-800 mb-2">招标采购人工具箱 v2.1</h1>
-                            <p className="text-slate-500">集成了8款常用辅助工具，助力高效工作</p>
+                    <Card className="bg-slate-50 flex flex-col">
+                        <div className="bg-slate-200 p-3 font-bold">抽取结果 ({results.length})</div>
+                        <div className="flex-1 overflow-y-auto p-4">
+                            {results.map((name, i) => <div key={i} className="py-2 border-b flex gap-3"><span className="font-bold text-blue-600 w-8">{i+1}</span>{name}</div>)}
                         </div>
-                        
-                        <section className="mb-10">
-                            <h2 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
-                                <i className="fas fa-info-circle"></i> 1. 项目简介
-                            </h2>
-                            <p className="text-slate-600 leading-relaxed bg-slate-50 p-4 rounded-lg border border-slate-100">
-                                本项目集成了招标采购过程中最常用的8款辅助工具，旨在为招标人、代理机构及相关从业人员提供便捷的费用测算与流程辅助服务。所有计算逻辑均严格基于国家及湖南省相关最新政策文件开发。
-                            </p>
-                        </section>
-
-                        <section className="mb-10">
-                            <h2 className="text-xl font-bold text-blue-700 mb-4 flex items-center gap-2">
-                                <i className="fas fa-table"></i> 2. 收费标准与依据文件对照表
-                            </h2>
-                            <div className="overflow-x-auto rounded-lg border border-slate-200 shadow-sm">
-                                <table className="w-full text-sm text-left border-collapse">
-                                    <thead className="bg-slate-100 text-slate-700 uppercase tracking-wider font-semibold">
-                                        <tr>
-                                            <th className="p-4 border-b border-slate-200">序号</th>
-                                            <th className="p-4 border-b border-slate-200">工具名称</th>
-                                            <th className="p-4 border-b border-slate-200">适用区域</th>
-                                            <th className="p-4 border-b border-slate-200">依据文件文号</th>
-                                            <th className="p-4 border-b border-slate-200">文件名称/说明</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody className="text-slate-600 divide-y divide-slate-100">
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-medium text-slate-800">01</td>
-                                            <td className="p-4 font-medium text-blue-600">招标代理服务费计算器</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
-                                            <td className="p-4">计价格[2002]1980号</td>
-                                            <td className="p-4">《招标代理服务收费管理暂行办法》</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-medium text-slate-800">02</td>
-                                            <td className="p-4 font-medium text-blue-600">湖南省专家评审费计算器</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs font-bold">湖南省</span></td>
-                                            <td className="p-4">湘发改公管〔2025〕440号</td>
-                                            <td className="p-4">含综合评标与政府采购标准</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-medium text-slate-800">03</td>
-                                            <td className="p-4 font-medium text-blue-600">湖南省交易服务费计算器</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-orange-100 text-orange-700 text-xs font-bold">湖南省</span></td>
-                                            <td className="p-4">湘发改价费规〔2024〕292号</td>
-                                            <td className="p-4">《公共资源交易服务费收费标准》</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-medium text-slate-800">04</td>
-                                            <td className="p-4 font-medium text-blue-600">工程设计收费计算器</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
-                                            <td className="p-4">计价格[2002]10号</td>
-                                            <td className="p-4">《工程勘察设计收费管理规定》</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-medium text-slate-800">05</td>
-                                            <td className="p-4 font-medium text-blue-600">建设工程监理费用计算器</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
-                                            <td className="p-4">发改价格〔2007〕670号</td>
-                                            <td className="p-4">《建设工程监理与相关服务收费管理规定》</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors bg-blue-50/50">
-                                            <td className="p-4 font-medium text-slate-800">06</td>
-                                            <td className="p-4 font-medium text-blue-600">建设项目前期工作咨询收费</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
-                                            <td className="p-4">计价格[1999]1283号</td>
-                                            <td className="p-4">《建设项目前期工作咨询收费暂行规定》</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors bg-teal-50/50">
-                                            <td className="p-4 font-medium text-slate-800">07</td>
-                                            <td className="p-4 font-medium text-teal-600">依法招标项目时限计算器</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-green-100 text-green-700 text-xs font-bold">全国通用</span></td>
-                                            <td className="p-4">招投标法及实施条例</td>
-                                            <td className="p-4">关键节点时限与业绩倒推计算</td>
-                                        </tr>
-                                        <tr className="hover:bg-slate-50 transition-colors">
-                                            <td className="p-4 font-medium text-slate-800">08</td>
-                                            <td className="p-4 font-medium text-blue-600">投标人顺序随机抽取系统</td>
-                                            <td className="p-4"><span className="px-2 py-1 rounded bg-purple-100 text-purple-700 text-xs font-bold">通用工具</span></td>
-                                            <td className="p-4">N/A</td>
-                                            <td className="p-4">Fisher-Yates 随机算法</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        </section>
-                        
-                         <section className="mt-10 pt-8 border-t border-slate-200 text-center">
-                            <h2 className="text-lg font-bold text-slate-700 mb-2">5. 反馈与支持</h2>
-                            <a href="mailto:jeff68@163.com" className="inline-flex items-center gap-2 px-6 py-3 bg-blue-50 text-blue-600 rounded-full hover:bg-blue-100 transition-colors font-medium">
-                                <i className="fas fa-envelope"></i> jeff68@163.com
-                            </a>
-                        </section>
                     </Card>
                 </div>
             );
         };
 
-        // --- Main App ---
-        const App = () => {
-            const [currentTool, setCurrentTool] = useState(null);
+        // --- [新增集成] Tool 9: 日期推算小程序 (基于 day.html) ---
+        const Tool9_DateCalc = () => {
+            const [tab, setTab] = useState('calc');
+            // 推算模式
+            const [base, setBase] = useState(formatDate(new Date()));
+            const [days, setDays] = useState(1);
+            const [calcType, setCalcType] = useState('calendar');
+            const [dir, setDir] = useState(1);
+            // 间隔模式
+            const [start, setStart] = useState(formatDate(new Date()));
+            const [end, setEnd] = useState(formatDate(new Date()));
 
-            const tools = [
-                { id: 1, title: '招标代理服务费', icon: 'fa-calculator', color: 'text-blue-500', desc: '差额定率累进计算' },
-                { id: 2, title: '湖南省专家评审费', icon: 'fa-user-tie', color: 'text-purple-500', desc: '含2025综合评标及2023政府采购标准' },
-                { id: 3, title: '湖南省交易服务费', icon: 'fa-building', color: 'text-emerald-500', desc: '湖南省建设工程交易收费标准' },
-                { id: 4, title: '工程设计收费', icon: 'fa-pen-ruler', color: 'text-orange-500', desc: '工程设计收费基价插值计算' },
-                { id: 5, title: '工程监理收费', icon: 'fa-clipboard-check', color: 'text-teal-500', desc: '发改价格〔2007〕670号' },
-                { id: 6, title: '前期工作咨询收费', icon: 'fa-chart-line', color: 'text-indigo-500', desc: '计价格[1999]1283号' },
-                { id: 7, title: '依法招标时限计算', icon: 'fa-business-time', color: 'text-teal-600', desc: '招投标法关键节点时限推算' },
-                { id: 8, title: '随机抽取系统', icon: 'fa-dice', color: 'text-red-500', desc: '投标人顺序随机抽取 (支持Excel)' },
-                { id: 9, title: '使用说明 (Readme)', icon: 'fa-book', color: 'text-slate-600', desc: '收费标准与依据文件对照表' },
-            ];
-
-            const renderTool = () => {
-                switch(currentTool) {
-                    case 1: return <Tool1_AgencyFee />;
-                    case 2: return <Tool2_ExpertFee />;
-                    case 3: return <Tool3_TransactionFee />;
-                    case 4: return <Tool4_DesignFee />;
-                    case 5: return <Tool5_SupervisionFee />;
-                    case 6: return <Tool6_ConsultingFee />;
-                    case 7: return <Tool7_TimeLimit />;
-                    case 8: return <Tool8_RandomDraw />;
-                    case 9: return <Tool9_Readme />;
-                    default: return null;
+            const calcRes = useMemo(() => {
+                let target = new Date(base);
+                const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+                if (calcType === 'calendar') {
+                    target.setDate(target.getDate() + (days * dir));
+                } else {
+                    let steps = days;
+                    while (steps > 0) {
+                        target.setDate(target.getDate() + dir);
+                        if (!isWeekend(target)) steps--;
+                    }
                 }
-            };
+                return { date: formatDate(target), week: weekdays[target.getDay()] };
+            }, [base, days, calcType, dir]);
 
-            const currentToolInfo = tools.find(t => t.id === currentTool);
+            const diffRes = useMemo(() => {
+                let s = new Date(start); let e = new Date(end);
+                const isNeg = s > e; if (isNeg) [s, e] = [e, s];
+                const cal = Math.floor((e - s) / 86400000);
+                let work = 0; let tmp = new Date(s);
+                while (tmp < e) { if (!isWeekend(tmp)) work++; tmp.setDate(tmp.getDate() + 1); }
+                return { cal, work };
+            }, [start, end]);
 
             return (
-                <div className="min-h-screen flex flex-col">
-                    {/* Header */}
-                    <header className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-lg print:hidden">
-                        <div className="max-w-6xl mx-auto px-4 py-6 flex items-center justify-between">
-                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentTool(null)}>
-                                <div className="bg-white/10 p-2 rounded-lg"><i className="fas fa-toolbox text-2xl"></i></div>
-                                <div>
-                                    <h1 className="text-xl md:text-2xl font-bold tracking-tight">招标采购人工具箱</h1>
-                                    <p className="text-blue-200 text-xs md:text-sm">专业 · 高效 · 便捷</p>
+                <div className="fade-in space-y-6">
+                    <div className="flex bg-slate-100 p-1 rounded-lg">
+                        <button onClick={() => setTab('calc')} className={`flex-1 py-2 rounded-lg text-sm font-medium ${tab === 'calc' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>推算日期</button>
+                        <button onClick={() => setTab('diff')} className={`flex-1 py-2 rounded-lg text-sm font-medium ${tab === 'diff' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>计算间隔</button>
+                    </div>
+                    {tab === 'calc' ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                            <div className="space-y-4">
+                                <InputGroup label="基准日期"><input type="date" value={base} onChange={e => setBase(e.target.value)} className="w-full p-2 border rounded-lg" /></InputGroup>
+                                <div className="grid grid-cols-2 gap-4">
+                                    <InputGroup label="方式"><select value={calcType} onChange={e => setCalcType(e.target.value)} className="w-full p-2 border rounded-lg bg-white"><option value="calendar">日历日</option><option value="working">工作日</option></select></InputGroup>
+                                    <InputGroup label="方向"><select value={dir} onChange={e => setDir(parseInt(e.target.value))} className="w-full p-2 border rounded-lg bg-white"><option value="1">向后 (未来)</option><option value="-1">向前 (过去)</option></select></InputGroup>
+                                </div>
+                                <InputGroup label="天数"><input type="number" value={days} onChange={e => setDays(Math.max(0, parseInt(e.target.value || 0)))} className="w-full p-2 border rounded-lg" /></InputGroup>
+                            </div>
+                            <div className="flex flex-col justify-center">
+                                <div className="bg-blue-600 rounded-2xl p-8 text-white shadow-xl text-center">
+                                    <div className="text-xs opacity-70 mb-2 font-bold tracking-widest">目标日期</div>
+                                    <div className="text-4xl font-black mb-2 font-mono">{calcRes.date}</div>
+                                    <div className="flex justify-center gap-3 text-sm font-medium"><span className="bg-white/20 px-2 py-0.5 rounded">{calcRes.week}</span><span>|</span><span>{days} 个{calcType==='working'?'工作':'日历'}日{dir>0?'后':'前'}</span></div>
                                 </div>
                             </div>
-                            {currentTool && (
-                                <button onClick={() => setCurrentTool(null)} className="text-white hover:bg-white/10 px-3 py-1 rounded transition">
-                                    <i className="fas fa-arrow-left mr-1"></i> 返回首页
-                                </button>
-                            )}
+                        </div>
+                    ) : (
+                        <div className="space-y-6">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                                <InputGroup label="开始日期"><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full p-2 border rounded-lg" /></InputGroup>
+                                <InputGroup label="结束日期"><input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full p-2 border rounded-lg" /></InputGroup>
+                            </div>
+                            <Card className="bg-slate-50 p-8 border-dashed flex justify-around">
+                                <div className="text-center"><div>日历天数</div><div className="text-3xl font-black">{diffRes.cal}</div></div>
+                                <div className="text-center border-l-2 pl-8"><div>工作天数</div><div className="text-3xl font-black text-blue-600">{diffRes.work}</div></div>
+                            </Card>
+                        </div>
+                    )}
+                </div>
+            );
+        };
+
+        // --- Tool 10: Readme ---
+        const Tool10_Readme = () => (
+            <div className="fade-in max-w-4xl mx-auto"><Card className="p-8"><h2 className="text-2xl font-bold mb-6 text-center">使用说明与依据汇总</h2><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-100"><tr><th className="p-3">工具</th><th className="p-3">适用区域</th><th className="p-3">主要依据</th></tr></thead><tbody className="divide-y"><tr><td className="p-3">01-06 费用类</td><td className="p-3">全国/湖南</td><td className="p-3">计价格、发改价格等系列文件</td></tr><tr><td className="p-3">07 招标时限</td><td className="p-3">全国</td><td className="p-3">《招标投标法》及实施条例</td></tr><tr className="bg-blue-50"><td className="p-3 font-bold">09 日期推算</td><td className="p-3">通用</td><td className="p-3 text-blue-600">支持工作日计算，适用于时限自查</td></tr></tbody></table></div></Card></div>
+        );
+
+        // --- 主 App 组件 ---
+        const App = () => {
+            const [currentTool, setCurrentTool] = useState(null);
+            const tools = [
+                { id: 1, title: '招标代理服务费', icon: 'fa-calculator', color: 'text-blue-500', desc: '差额定率累进计算' },
+                { id: 2, title: '湖南省专家评审费', icon: 'fa-user-tie', color: 'text-purple-500', desc: '含2025综合评标及2023政采标准' },
+                { id: 3, title: '湖南省交易服务费', icon: 'fa-building', color: 'text-emerald-500', desc: '湘发改价费规〔2024〕292号' },
+                { id: 4, title: '工程设计收费', icon: 'fa-pen-ruler', color: 'text-orange-500', desc: '计价格[2002]10号计算' },
+                { id: 5, title: '工程监理收费', icon: 'fa-clipboard-check', color: 'text-teal-500', desc: '发改价格〔2007〕670号' },
+                { id: 6, title: '前期工作咨询收费', icon: 'fa-chart-line', color: 'text-indigo-500', desc: '计价格[1999]1283号' },
+                { id: 7, title: '依法招标时限计算', icon: 'fa-business-time', color: 'text-teal-600', desc: '关键节点时限推算' },
+                { id: 8, title: '随机抽取系统', icon: 'fa-dice', color: 'text-red-500', desc: '投标人顺序随机抽取' },
+                { id: 9, title: '日期推算与间隔', icon: 'fa-calendar-alt', color: 'text-blue-600', desc: '工作日/日历日精准计算' },
+                { id: 10, title: '使用说明 (Readme)', icon: 'fa-book', color: 'text-slate-600', desc: '依据文件对照表' },
+            ];
+            const renderTool = () => {
+                switch(currentTool) {
+                    case 1: return <Tool1_AgencyFee />; case 2: return <Tool2_ExpertFee />; case 3: return <Tool3_TransactionFee />;
+                    case 4: return <Tool4_DesignFee />; case 5: return <Tool5_SupervisionFee />; case 6: return <Tool6_ConsultingFee />;
+                    case 7: return <Tool7_TimeLimit />; case 8: return <Tool8_RandomDraw />; case 9: return <Tool9_DateCalc />;
+                    case 10: return <Tool10_Readme />; default: return null;
+                }
+            };
+            return (
+                <div className="min-h-screen flex flex-col">
+                    <header className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-lg p-6">
+                        <div className="max-w-6xl mx-auto flex justify-between items-center">
+                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentTool(null)}>
+                                <i className="fas fa-toolbox text-2xl"></i><h1 className="text-xl font-bold">招标采购人工具箱 v2.2</h1>
+                            </div>
+                            {currentTool && <button onClick={() => setCurrentTool(null)} className="bg-white/20 px-4 py-2 rounded-lg text-sm">返回首页</button>}
                         </div>
                     </header>
-
-                    {/* Main Content */}
                     <main className="flex-grow max-w-6xl mx-auto px-4 py-8 w-full">
                         {!currentTool ? (
                             <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 fade-in">
-                                {tools.map(tool => (
-                                    <div key={tool.id} onClick={() => setCurrentTool(tool.id)} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer group">
-                                        <div className={`w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-4 group-hover:bg-blue-50 transition-colors`}>
-                                            <i className={`fas ${tool.icon} ${tool.color} text-2xl`}></i>
-                                        </div>
-                                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-blue-600 transition-colors">{tool.title}</h3>
-                                        <p className="text-slate-500 text-sm mt-2">{tool.desc}</p>
+                                {tools.map(t => (
+                                    <div key={t.id} onClick={() => setCurrentTool(t.id)} className="bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer group">
+                                        <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-4 group-hover:bg-blue-50"><i className={`fas ${t.icon} ${t.color} text-2xl`}></i></div>
+                                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-blue-600">{t.title}</h3><p className="text-slate-500 text-sm mt-2">{t.desc}</p>
                                     </div>
                                 ))}
                             </div>
                         ) : (
                             <div className="fade-in">
-                                <div className="mb-6 flex items-center gap-3 border-b pb-4">
-                                    <i className={`fas ${currentToolInfo.icon} ${currentToolInfo.color} text-2xl`}></i>
-                                    <h2 className="text-2xl font-bold text-slate-800">{currentToolInfo.title}</h2>
-                                </div>
+                                <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3 border-b pb-4">
+                                    <i className={`fas ${tools.find(t=>t.id===currentTool).icon} ${tools.find(t=>t.id===currentTool).color}`}></i>
+                                    {tools.find(t=>t.id===currentTool).title}
+                                </h2>
                                 {renderTool()}
                             </div>
                         )}
                     </main>
-
-                    {/* Footer */}
-                    <footer className="bg-white border-t border-slate-200 py-8 print:hidden">
-                        <div className="max-w-4xl mx-auto px-4 text-center space-y-4">
-                            <div className="text-xs text-slate-400 max-w-2xl mx-auto leading-relaxed">
-                                <p className="font-bold mb-1">免责声明</p>
-                                <p>本工具箱提供的所有计算结果仅供参考，不作为最终法律依据或结算凭证。请以官方发布的最新文件、招标文件及实际合同约定为准。开发者不对因使用本工具产生的数据偏差承担责任。</p>
-                            </div>
-                            <div className="flex justify-center items-center gap-2 text-sm text-slate-500">
-                                <i className="fas fa-envelope text-blue-500"></i>
-                                <span>反馈邮箱: jeff68@163.com</span>
-                            </div>
-                        </div>
+                    <footer className="bg-white border-t py-8 text-center text-xs text-slate-400">
+                        <p>本工具箱结果仅供参考，不作为最终法律依据。如有问题请反馈至 jeff68@163.com</p>
                     </footer>
                 </div>
             );
         };
-
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
