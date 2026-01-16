@@ -3,13 +3,18 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>招标采购人工具箱 v2.2</title>
+    <title>招标采购人工具箱 v2.3 (湖南修订版)</title>
+    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
+    <!-- React & ReactDOM -->
     <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
     <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <!-- Babel -->
     <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <!-- FontAwesome -->
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <!-- PDF.js (用于发票助手) -->
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
 
     <style>
         body { font-family: 'Inter', system-ui, -apple-system, sans-serif; background-color: #f8fafc; }
@@ -17,10 +22,47 @@
         .slide-in { animation: slideIn 0.3s ease-out forwards; }
         @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
         @keyframes slideIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
-        .tab-active { border-bottom: 3px solid #2563eb; color: #2563eb; font-weight: 700; }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance: none; height: 16px; width: 16px; border-radius: 50%; background: #2563eb; cursor: pointer; margin-top: -6px; }
-        input[type=range]::-webkit-slider-runnable-track { width: 100%; height: 4px; cursor: pointer; background: #e2e8f0; border-radius: 2px; }
-        @media print { .no-print { display: none; } .print-break { page-break-inside: avoid; } }
+        
+        /* 打印专用样式控制 */
+        @media print {
+            body * { visibility: hidden; }
+            /* 隐藏侧边栏和头部，只显示打印区域 */
+            .no-print, header, footer, .tool-selector { display: none !important; }
+            
+            /* 专门针对发票打印区域的显示设置 */
+            #invoice-print-area, #invoice-print-area * { 
+                visibility: visible; 
+            }
+            #invoice-print-area {
+                position: absolute;
+                left: 0;
+                top: 0;
+                width: 100%;
+                margin: 0;
+                padding: 0;
+            }
+            
+            /* 发票页面分页控制 */
+            .invoice-page { 
+                page-break-after: always; 
+                width: 100%;
+                height: 100vh; /* 强制填满一页 */
+                padding: 10mm; /* 打印边距 */
+            }
+            .invoice-page:last-child { page-break-after: auto; }
+            
+            /* 打印时的裁剪线 */
+            .print-dashed-border {
+                border-style: dashed !important;
+                border-width: 1px !important;
+                border-color: #9ca3af !important; /* gray-400 */
+            }
+            .print-hide-bg { background-color: transparent !important; }
+        }
+        
+        /* 时间轴样式 */
+        .timeline-line { position: absolute; left: 15px; top: 24px; bottom: 0; width: 2px; background: #e2e8f0; z-index: 0; }
+        .timeline-item:last-child .timeline-line { display: none; }
     </style>
 </head>
 <body>
@@ -29,7 +71,7 @@
     <script type="text/babel">
         const { useState, useEffect, useRef, useMemo } = React;
 
-        // --- 通用基础组件 ---
+        // --- 通用组件 ---
         const Card = ({ children, className = "" }) => (
             <div className={`bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden ${className}`}>
                 {children}
@@ -95,91 +137,44 @@
             const [amount, setAmount] = useState("");
             const [type, setType] = useState("goods");
             const [discount, setDiscount] = useState(100);
-
-            const rateTable = [
-                { limit: 100, rates: { goods: 1.5, service: 1.5, engineering: 1.0 } },
-                { limit: 500, rates: { goods: 1.1, service: 0.8, engineering: 0.7 } },
-                { limit: 1000, rates: { goods: 0.8, service: 0.45, engineering: 0.55 } },
-                { limit: 5000, rates: { goods: 0.5, service: 0.25, engineering: 0.35 } },
-                { limit: 10000, rates: { goods: 0.25, service: 0.1, engineering: 0.2 } },
-                { limit: 100000, rates: { goods: 0.05, service: 0.05, engineering: 0.05 } },
-                { limit: Infinity, rates: { goods: 0.01, service: 0.01, engineering: 0.01 } }
-            ];
-
-            const result = useMemo(() => {
-                const val = parseFloat(amount);
-                if (!val || val <= 0) return { base: 0, final: 0, details: [] };
-                const amountWan = val / 10000;
-                let totalFeeWan = 0;
-                let prevLimit = 0;
-                let breakdown = [];
-                for (let tier of rateTable) {
-                    const currentLimit = tier.limit;
-                    const rate = tier.rates[type];
-                    let rangeAmount = 0;
-                    if (amountWan > prevLimit) {
-                        rangeAmount = (amountWan >= currentLimit ? currentLimit : amountWan) - prevLimit;
+            const rateTable = [{limit:100,rates:{goods:1.5,service:1.5,engineering:1.0}},{limit:500,rates:{goods:1.1,service:0.8,engineering:0.7}},{limit:1000,rates:{goods:0.8,service:0.45,engineering:0.55}},{limit:5000,rates:{goods:0.5,service:0.25,engineering:0.35}},{limit:10000,rates:{goods:0.25,service:0.1,engineering:0.2}},{limit:100000,rates:{goods:0.05,service:0.05,engineering:0.05}},{limit:Infinity,rates:{goods:0.01,service:0.01,engineering:0.01}}];
+            const result = useMemo(()=>{
+                const val = parseFloat(amount); if(!val || val<=0) return {base:0,final:0,details:[]};
+                let amountWan=val/10000, total=0, prev=0, list=[];
+                for(let t of rateTable){
+                    let range = (amountWan > t.limit ? t.limit : amountWan) - prev;
+                    if(range > 0) {
+                        let fee = range * (t.rates[type]/100); total+=fee;
+                        list.push({range: t.limit===Infinity?`>${prev}万`:`${prev}-${t.limit}万`, rate:t.rates[type], fee:fee*10000});
                     }
-                    if (rangeAmount > 0) {
-                        const segmentFee = rangeAmount * (rate / 100);
-                        totalFeeWan += segmentFee;
-                        breakdown.push({
-                            range: currentLimit === Infinity ? `> ${prevLimit}万` : `${prevLimit}-${currentLimit}万`,
-                            rate: rate,
-                            fee: segmentFee * 10000
-                        });
-                    } else if (amountWan <= prevLimit && prevLimit > 0) break;
-                    prevLimit = currentLimit;
+                    if(amountWan <= t.limit) break;
+                    prev = t.limit;
                 }
-                const baseFee = totalFeeWan * 10000;
-                return { base: baseFee, final: baseFee * (discount / 100), details: breakdown };
-            }, [amount, type, discount]);
+                const b = total*10000; return {base:b, final:b*(discount/100), details:list};
+            },[amount,type,discount]);
 
             return (
                 <div className="space-y-6 fade-in">
-                    <div className="bg-blue-50 border-l-4 border-blue-500 p-4 mb-4 text-sm text-blue-700">依据：计价格[2002]1980号 & 发改价格[2011]534号</div>
+                    <div className="bg-blue-50 border-l-4 border-blue-500 p-3 text-sm text-blue-700">依据：计价格[2002]1980号 & 发改价格[2011]534号</div>
                     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div className="space-y-4">
                             <InputGroup label="项目类别">
-                                <div className="grid grid-cols-3 gap-2">
-                                    {[['goods', '货物招标'], ['service', '服务招标'], ['engineering', '工程招标']].map(([key, label]) => (
-                                        <button key={key} onClick={() => setType(key)} className={`py-2 text-sm rounded-md border ${type === key ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-600 border-slate-300 hover:bg-slate-50'}`}>{label}</button>
-                                    ))}
-                                </div>
+                                <div className="grid grid-cols-3 gap-2">{[['goods','货物'],['service','服务'],['engineering','工程']].map(([k,l])=><button key={k} onClick={()=>setType(k)} className={`py-2 text-sm rounded border ${type===k?'bg-blue-600 text-white':'bg-white hover:bg-gray-50'}`}>{l}</button>)}</div>
                             </InputGroup>
-                            <InputGroup label="中标金额" suffix="元" subLabel={amount ? `${(amount/10000).toFixed(4)} 万元` : ''}>
-                                <input type="number" value={amount} onChange={(e) => setAmount(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pl-4 pr-10" placeholder="请输入金额" />
-                            </InputGroup>
-                            <InputGroup label="折扣率" suffix="%" subLabel="默认100%">
-                                <input type="number" value={discount} onChange={(e) => setDiscount(e.target.value)} className="w-full p-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none pl-4 pr-10" />
-                            </InputGroup>
+                            <InputGroup label="中标金额 (元)"><input type="number" value={amount} onChange={e=>setAmount(e.target.value)} className="w-full p-2 border rounded" /></InputGroup>
+                            <InputGroup label="折扣率 (%)"><input type="number" value={discount} onChange={e=>setDiscount(e.target.value)} className="w-full p-2 border rounded" /></InputGroup>
                         </div>
-                        <Card className="bg-slate-50 p-6 flex flex-col justify-between h-full">
-                            <div>
-                                <h3 className="text-sm font-bold text-slate-500 uppercase tracking-wider mb-4">计算结果</h3>
-                                <div className="flex justify-between items-center mb-2 text-sm"><span className="text-slate-500">标准收费</span><span className="font-medium text-slate-700">¥ {formatCurrency(result.base)}</span></div>
-                                <div className="flex justify-between items-center pt-4 border-t border-slate-200"><span className="text-lg font-bold text-slate-800">最终收费</span><span className="text-2xl font-bold text-blue-600">¥ {formatCurrency(result.final)}</span></div>
-                            </div>
-                            <div className="mt-6">
-                                <p className="text-xs font-semibold text-slate-500 mb-2">计算明细 (差额定率累进)</p>
-                                <div className="bg-white rounded border border-slate-200 overflow-hidden text-xs">
-                                    <table className="w-full text-left">
-                                        <thead className="bg-slate-50"><tr><th className="p-2">区间</th><th className="p-2">费率</th><th className="p-2 text-right">金额</th></tr></thead>
-                                        <tbody>
-                                            {result.details.map((row, idx) => (
-                                                <tr key={idx} className="border-t border-slate-100"><td className="p-2 text-slate-600">{row.range}</td><td className="p-2 text-blue-500">{row.rate}%</td><td className="p-2 text-right font-mono">{formatCurrency(row.fee)}</td></tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                            </div>
+                        <Card className="p-6 bg-slate-50">
+                            <div className="flex justify-between mb-2"><span>标准收费</span><span className="font-bold">¥ {formatCurrency(result.base)}</span></div>
+                            <div className="flex justify-between text-xl font-bold text-blue-600 pt-2 border-t"><span>折后收费</span><span>¥ {formatCurrency(result.final)}</span></div>
+                            <div className="mt-4 text-xs bg-white p-2 border rounded h-40 overflow-auto">{result.details.map((d,i)=><div key={i} className="flex justify-between py-1 border-b border-dashed"><span>{d.range} ({d.rate}%)</span><span>{formatCurrency(d.fee)}</span></div>)}</div>
                         </Card>
                     </div>
                 </div>
             );
         };
 
-        // --- Tool 2: 湖南省专家评审费 ---
+        // --- Tool 2: 湖南省专家评审费 (完整恢复版) ---
         const Tool2_ExpertFee = () => {
             const [mode, setMode] = useState('comprehensive'); 
             const [compState, setCompState] = useState({ durationH: 0, durationM: 0, day2H: 0, day2M: 0, isOvernight: false, isChair: false, isCancelled: false });
@@ -232,8 +227,8 @@
             return (
                 <div className="fade-in space-y-6">
                     <div className="flex space-x-1 bg-slate-100 p-1 rounded-lg mb-4">
-                        <button onClick={() => setMode('comprehensive')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${mode === 'comprehensive' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>综合评标 (2025)</button>
-                        <button onClick={() => setMode('procurement')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${mode === 'procurement' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>政府采购 (2023)</button>
+                        <button onClick={() => setMode('comprehensive')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${mode === 'comprehensive' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>湖南省综合评标 (2025)</button>
+                        <button onClick={() => setMode('procurement')} className={`flex-1 py-2 rounded-md text-sm font-medium transition-all ${mode === 'procurement' ? 'bg-white shadow text-emerald-600' : 'text-slate-500'}`}>湖南省政府采购 (2023)</button>
                     </div>
                     {mode === 'comprehensive' ? (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -242,13 +237,22 @@
                                 {!compState.isCancelled && (
                                     <>
                                         <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
-                                            <label className="text-sm font-bold text-blue-800">评审时长</label>
+                                            <label className="text-sm font-bold text-blue-800">第一日评审时长</label>
                                             <div className="flex gap-2 mt-2">
                                                 <input type="number" value={compState.durationH} onChange={e => setCompState({...compState, durationH: +e.target.value})} className="w-20 p-2 border rounded" /><span>小时</span>
                                                 <input type="number" value={compState.durationM} onChange={e => setCompState({...compState, durationM: +e.target.value})} className="w-20 p-2 border rounded" /><span>分</span>
                                             </div>
+                                            <p className="text-xs text-blue-600 mt-2">注：不满30分按30分算，超过30分按1小时算</p>
                                         </div>
-                                        <label className="flex items-center gap-2"><input type="checkbox" checked={compState.isOvernight} onChange={e => setCompState({...compState, isOvernight: e.target.checked})} /><span className="text-sm font-medium">隔夜评标</span></label>
+                                        <div className="p-3 border rounded-lg bg-white">
+                                            <label className="flex items-center gap-2 mb-2"><input type="checkbox" checked={compState.isOvernight} onChange={e => setCompState({...compState, isOvernight: e.target.checked})} /><span className="text-sm font-medium">隔夜评标 (次日)</span></label>
+                                            {compState.isOvernight && (
+                                                 <div className="flex gap-2 mt-2 ml-6">
+                                                    <input type="number" placeholder="0" value={compState.day2H} onChange={e => setCompState({...compState, day2H: +e.target.value})} className="w-16 p-1 border rounded" /><span>时</span>
+                                                    <input type="number" placeholder="0" value={compState.day2M} onChange={e => setCompState({...compState, day2M: +e.target.value})} className="w-16 p-1 border rounded" /><span>分</span>
+                                                </div>
+                                            )}
+                                        </div>
                                         <label className="flex items-center gap-2"><input type="checkbox" checked={compState.isChair} onChange={e => setCompState({...compState, isChair: e.target.checked})} /><span className="text-sm font-medium">我是主任评委 (+100)</span></label>
                                     </>
                                 )}
@@ -272,8 +276,20 @@
                                             <input type="number" value={procState.durationH} onChange={e => setProcState({...procState, durationH: +e.target.value})} className="w-20 p-2 border rounded" /><span>小时</span>
                                             <input type="number" value={procState.durationM} onChange={e => setProcState({...procState, durationM: +e.target.value})} className="w-20 p-2 border rounded" /><span>分</span>
                                         </div>
+                                        {procState.isRemote && (
+                                            <div className="mt-2">
+                                                <label className="text-xs font-bold text-emerald-700 block mb-1">职称级别</label>
+                                                <select className="w-full p-1 border rounded text-sm" value={procState.level} onChange={e=>setProcState({...procState, level: e.target.value})}>
+                                                    <option value="normal">中级/普通</option>
+                                                    <option value="senior">高级职称</option>
+                                                    <option value="professor">教授级</option>
+                                                    <option value="academician">院士</option>
+                                                </select>
+                                            </div>
+                                        )}
                                     </div>
                                 )}
+                                <label className="flex items-center gap-2 mt-2"><input type="checkbox" checked={procState.isLeader} onChange={e => setProcState({...procState, isLeader: e.target.checked})} /><span className="text-sm font-medium">评审组长 (+100)</span></label>
                             </div>
                             <Card className="bg-slate-50 p-6 flex flex-col justify-between">
                                 <div><h4 className="text-sm font-bold text-slate-500">费用明细</h4><div className="mt-4 space-y-2 text-sm text-slate-600">{procResult.logs.map((l, i) => <div key={i} className="flex justify-between border-b pb-1"><span>{l.split(':')[0]}</span><span className="font-mono">{l.split(':')[1]}</span></div>)}</div></div>
@@ -284,8 +300,8 @@
                 </div>
             );
         };
-
-        // --- Tool 3: 湖南省交易服务费 ---
+        
+        // --- Tool 3: 湖南省交易服务费 (完整恢复版) ---
         const Tool3_TransactionFee = () => {
             const [amount, setAmount] = useState("");
             const [type, setType] = useState("construction");
@@ -305,7 +321,7 @@
             return (
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
                     <div className="space-y-6">
-                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">依据：湘发改价费规〔2024〕292号</div>
+                        <div className="bg-blue-50 border-l-4 border-blue-500 p-4 text-sm text-blue-700">依据：湘发改价费规〔2024〕292号 (湖南省专用)</div>
                         <InputGroup label="项目类型">
                             <div className="grid grid-cols-2 gap-4">
                                 <div onClick={() => setType('construction')} className={`cursor-pointer border-2 rounded-xl p-4 transition-all ${type === 'construction' ? 'border-blue-600 bg-blue-50' : 'border-slate-200'}`}>施工/装修/物资 (40/60)</div>
@@ -329,7 +345,7 @@
             );
         };
 
-        // --- Tool 4: 工程设计收费 ---
+        // --- Tool 4: 工程设计收费 (完整恢复功能) ---
         const Tool4_DesignFee = () => {
             const [invest, setInvest] = useState("");
             const [profCoeff, setProfCoeff] = useState(1.0);
@@ -372,18 +388,33 @@
                                 <option value="1.0">建筑、市政 (1.0)</option><option value="1.1">人防、园林、地铁 (1.1)</option><option value="0.9">公路、城市道路 (0.9)</option><option value="1.2">石油化工、水利水电 (1.2)</option>
                             </select>
                         </InputGroup>
+                         <div className="grid grid-cols-2 gap-4">
+                            <InputGroup label="复杂程度系数">
+                                <input type="number" step="0.1" value={complexCoeff} onChange={e => setComplexCoeff(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            </InputGroup>
+                            <InputGroup label="附加调整系数">
+                                <input type="number" step="0.1" value={addCoeff} onChange={e => setAddCoeff(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            </InputGroup>
+                         </div>
+                         <InputGroup label="浮动幅度 (%)">
+                            <input type="number" value={floatRate} onChange={e => setFloatRate(e.target.value)} className="w-full p-2 border rounded-lg" placeholder="-20 到 20" />
+                        </InputGroup>
                     </div>
                     <div className="space-y-6">
                         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
                             <h3 className="text-blue-200 text-sm font-bold uppercase tracking-wider mb-2">设计收费总额</h3>
                             <div className="text-4xl font-bold">{formatCurrency(result.final)} <span className="text-lg text-blue-200 font-normal">万元</span></div>
+                            <div className="mt-4 pt-4 border-t border-blue-500/30 text-sm opacity-80">
+                                <div>基本设计收费: {formatCurrency(result.basicFee)} 万元</div>
+                                <div>基准价: {formatCurrency(result.basePrice)} 万元</div>
+                            </div>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        // --- Tool 5: 建设工程监理费用 ---
+        // --- Tool 5: 建设工程监理费用 (完整恢复功能) ---
         const Tool5_SupervisionFee = () => {
             const [invest, setInvest] = useState("");
             const [indCoeff, setIndCoeff] = useState(1.0);
@@ -401,7 +432,7 @@
                 let base = 0; if (val < 500) base = (val/500)*16.5; else if (val > 1000000) base = val * 0.01039;
                 else {
                     for(let i=0; i<table.length-1; i++) {
-                        if (val >= table[i].l && val <= table[i+1].l) {
+                        if (val >= table[i].l && val <= table[i+1].x) {
                             base = table[i].v + (val - table[i].l) * (table[i+1].v - table[i].v) / (table[i+1].l - table[i].l); break;
                         }
                     }
@@ -422,18 +453,29 @@
                                 <option value="1.0">建筑、市政、火电 (1.0)</option><option value="0.8">园林绿化 (0.8)</option><option value="1.1">地铁、桥梁 (1.1)</option>
                             </select>
                         </InputGroup>
+                        <div className="grid grid-cols-2 gap-4">
+                            <InputGroup label="复杂程度系数">
+                                <input type="number" step="0.1" value={compCoeff} onChange={e => setCompCoeff(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            </InputGroup>
+                            <InputGroup label="浮动幅度 (%)">
+                                <input type="number" value={floatRate} onChange={e => setFloatRate(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            </InputGroup>
+                        </div>
                     </div>
                     <div className="space-y-6">
                         <div className="bg-gradient-to-br from-blue-600 to-blue-800 rounded-xl p-6 text-white shadow-lg">
                             <h3 className="text-blue-200 text-sm font-bold uppercase tracking-wider mb-2">监理收费总额</h3>
                             <div className="text-4xl font-bold">{formatCurrency(result.final)} <span className="text-lg text-blue-200 font-normal">万元</span></div>
+                            <div className="mt-4 pt-4 border-t border-blue-500/30 text-sm opacity-80">
+                                基准价: {formatCurrency(result.base)} 万元
+                            </div>
                         </div>
                     </div>
                 </div>
             );
         };
 
-        // --- Tool 6: 建设项目前期工作咨询收费 ---
+        // --- Tool 6: 建设项目前期工作咨询收费 (恢复完整功能) ---
         const Tool6_ConsultingFee = () => {
             const INVEST_BRACKETS = [3000, 10000, 50000, 100000, 500000];
             const SERVICE_TYPES = [
@@ -480,6 +522,9 @@
                                 {SERVICE_TYPES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
                             </select>
                         </InputGroup>
+                        <InputGroup label="行业调整系数">
+                            <input type="number" step="0.1" value={industryCoeff} onChange={e => setIndustryCoeff(e.target.value)} className="w-full p-2 border rounded-lg" />
+                        </InputGroup>
                     </div>
                     <div className="space-y-6">
                         {result && (
@@ -493,248 +538,487 @@
             );
         };
 
-        // --- Tool 7: 依法招标项目时限计算器 ---
+        // --- Tool 7: 依法招标项目时限计算器 (含民法典201条逻辑) ---
         const Tool7_TimeLimit = () => {
-            const [mode, setMode] = useState('forward'); 
+            const [mode, setMode] = useState('forward');
             const [baseDate, setBaseDate] = useState(formatDate(new Date()));
-            const [tenderType, setTenderType] = useState('post-qual'); 
+            const [tenderType, setTenderType] = useState('post-qual');
 
-            const forwardEvents = useMemo(() => {
+            const calculateForward = () => {
                 if (!baseDate) return [];
                 const start = new Date(baseDate);
+                const makeNode = (date, title, sub, desc, reg, isLast=false, isStart=false) => ({date, title, sub, desc, reg, isLast, isStart});
+
                 if (tenderType === 'post-qual') {
                     const bidDeadline = addDays(baseDate, 20);
                     return [
-                        { date: start, title: "上网公告发布日", subtitle: "流程启动", desc: "招标文件开始发出之日", regulation: null },
-                        { date: addDays(baseDate, 5), title: "招标文件发售截止", subtitle: "发售期", desc: "发售期不得少于5日", regulation: "条例第16条" },
-                        { date: bidDeadline, title: "最早开标时间", subtitle: "关键节点", desc: "不得少于20日", regulation: "招标投标法第24条", isLast: true }
-                    ];
+                        makeNode(start, "公告发布日 (T)", "基准日", "根据《民法典》201条，本日不计入期间，从次日起算。", "民法典第201条", false, true),
+                        makeNode(addDays(baseDate, 5), "招标文件发售最短截止", "发售期", "自开始发售之日(不含)起不得少于5日。", "条例第16条"),
+                        makeNode(subtractDays(bidDeadline, 15), "澄清/修改最晚截止", "答疑期", "投标截止时间15日前。如不足，必须顺延。", "条例第21条"),
+                        makeNode(subtractDays(bidDeadline, 10), "提出异议截止", "异议期", "投标截止时间10日前提出。", "条例第22条"),
+                        makeNode(bidDeadline, "最早投标截止时间", "T + 20日", "自招标文件开始发出之日(不含)起不得少于20日。", "招标投标法第24条", true)
+                    ].sort((a, b) => a.date - b.date);
                 } else {
-                    const saleEnd = addDays(baseDate, 5); const submitDeadline = addDays(formatDate(saleEnd), 5);
+                    const saleEnd = addDays(baseDate, 5);
+                    const submitDeadline = addDays(saleEnd, 5);
                     return [
-                        { date: start, title: "资审公告发布日", subtitle: "流程启动", desc: "资审文件开始发出之日", regulation: null },
-                        { date: saleEnd, title: "文件发售截止", subtitle: "发售期", desc: "不得少于5日", regulation: "条例第16条" },
-                        { date: submitDeadline, title: "资审申请截止", subtitle: "提交截止", desc: "自发售截止起不少于5日", regulation: "条例第17条", isLast: true }
-                    ];
+                        makeNode(start, "公告发布日 (T)", "基准日", "本日不计入期间，从次日起算。", "民法典第201条", false, true),
+                        makeNode(saleEnd, "资格预审文件发售截止", "发售期", "自开始发售之日(不含)起不得少于5日。", "条例第16条"),
+                        makeNode(subtractDays(submitDeadline, 3), "澄清/修改最晚截止", "答疑期", "提交申请文件截止时间3日前。", "条例第21条"),
+                        makeNode(submitDeadline, "资格预审申请提交截止", "提交截止", "自停止发售之日(不含)起不得少于5日。", "条例第17条", true)
+                    ].sort((a, b) => a.date - b.date);
                 }
-            }, [baseDate, tenderType]);
+            };
 
-            const backwardDates = useMemo(() => {
-                if (!baseDate) return null;
-                return { threeYears: subtractDays(baseDate, 1095), fiveYears: subtractDays(baseDate, 1825) };
-            }, [baseDate]);
+            const forwardEvents = calculateForward();
+            const backwardDates = baseDate ? {
+                three: subtractDays(baseDate, 1095),
+                five: subtractDays(baseDate, 1825)
+            } : null;
 
             return (
-                <div className="fade-in space-y-6">
-                    <div className="flex bg-slate-100 p-1 rounded-lg">
-                        <button onClick={() => setMode('forward')} className={`flex-1 py-3 rounded-lg text-sm font-medium ${mode === 'forward' ? 'bg-white shadow text-teal-600' : 'text-slate-500'}`}>正推：流程时限</button>
-                        <button onClick={() => setMode('backward')} className={`flex-1 py-3 rounded-lg text-sm font-medium ${mode === 'backward' ? 'bg-white shadow text-teal-600' : 'text-slate-500'}`}>倒推：业绩期限</button>
+                <div className="fade-in">
+                    <div className="flex bg-slate-100 p-1 rounded-lg mb-6">
+                        <button onClick={() => setMode('forward')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${mode === 'forward' ? 'bg-white shadow text-teal-600' : 'text-slate-400 hover:text-slate-600'}`}><i className="fas fa-forward mr-2"></i>正推：流程时限</button>
+                        <button onClick={() => setMode('backward')} className={`flex-1 py-3 rounded-lg text-sm font-bold transition-all ${mode === 'backward' ? 'bg-white shadow text-indigo-600' : 'text-slate-400 hover:text-slate-600'}`}><i className="fas fa-history mr-2"></i>倒推：业绩信誉</button>
                     </div>
-                    <div className="bg-white rounded-xl shadow-sm border p-6">
+
+                    <Card className="p-6 md:p-8">
+                        <div className="bg-orange-50 border-l-4 border-orange-400 p-4 mb-8 rounded-r flex gap-3 text-sm">
+                            <i className="fas fa-balance-scale text-orange-500 mt-1"></i>
+                            <div className="text-orange-800">
+                                <div className="font-bold mb-1">法规提示：《民法典》第二百零一条</div>
+                                <div className="opacity-90">按照年、月、日计算期间的，开始的当日不计入，自下一日开始计算。</div>
+                            </div>
+                        </div>
+
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8">
-                            <InputGroup label={mode === 'forward' ? '公告发布日期' : '评标/截止日期'}>
-                                <input type="date" value={baseDate} onChange={(e) => setBaseDate(e.target.value)} className="w-full p-2 border rounded-lg" />
+                            <InputGroup label={mode === 'forward' ? '选择起始日期 (如发布公告日)' : '选择开标/评审日期'} subLabel="Day 0">
+                                <input type="date" value={baseDate} onChange={e => setBaseDate(e.target.value)} className="w-full p-3 border border-slate-300 rounded-lg focus:ring-2 focus:ring-teal-500 outline-none" />
                             </InputGroup>
+                            
                             {mode === 'forward' && (
-                                <InputGroup label="招标方式">
-                                    <div className="flex gap-2">
-                                        <button onClick={() => setTenderType('post-qual')} className={`flex-1 py-2 rounded border text-xs ${tenderType === 'post-qual' ? 'bg-teal-500 text-white' : 'bg-white'}`}>资格后审</button>
-                                        <button onClick={() => setTenderType('pre-qual')} className={`flex-1 py-2 rounded border text-xs ${tenderType === 'pre-qual' ? 'bg-teal-500 text-white' : 'bg-white'}`}>资格预审</button>
+                                <InputGroup label="项目类型">
+                                    <div className="flex gap-3">
+                                        <button onClick={() => setTenderType('post-qual')} className={`flex-1 py-3 rounded-lg border text-sm font-medium ${tenderType === 'post-qual' ? 'bg-teal-50 border-teal-500 text-teal-700' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>资格后审</button>
+                                        <button onClick={() => setTenderType('pre-qual')} className={`flex-1 py-3 rounded-lg border text-sm font-medium ${tenderType === 'pre-qual' ? 'bg-teal-50 border-teal-500 text-teal-700' : 'bg-white text-slate-500 hover:bg-slate-50'}`}>资格预审</button>
                                     </div>
                                 </InputGroup>
                             )}
                         </div>
+
                         {mode === 'forward' ? (
-                            <div className="space-y-4">
-                                {forwardEvents.map((ev, i) => (
-                                    <div key={i} className="flex gap-4 items-start border-l-2 border-slate-200 pl-4 pb-6 last:pb-0 relative">
-                                        <div className="absolute -left-[9px] top-0 w-4 h-4 rounded-full bg-teal-500"></div>
-                                        <div className="flex-1">
-                                            <div className="text-xs text-teal-600 font-bold">{ev.subtitle}</div>
-                                            <div className="font-bold">{ev.title}</div>
-                                            <div className="text-xs text-slate-500">{ev.desc}</div>
+                            <div className="relative pl-4 space-y-0">
+                                {forwardEvents.map((ev, idx) => (
+                                    <div key={idx} className="timeline-item relative pl-8 pb-10">
+                                        <div className={`absolute left-[11px] top-[24px] bottom-0 w-[2px] ${idx === forwardEvents.length -1 ? 'hidden' : 'bg-slate-200'}`}></div>
+                                        <div className={`absolute left-0 top-1.5 w-6 h-6 rounded-full border-4 z-10 bg-white ${ev.isStart ? 'border-blue-400' : ev.isLast ? 'border-teal-500' : 'border-slate-300'}`}></div>
+                                        <div className={`p-4 rounded-lg border transition-all ${ev.isLast ? 'bg-teal-50 border-teal-200 shadow-sm' : 'bg-white border-slate-100 hover:border-slate-300'}`}>
+                                            <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+                                                <div>
+                                                    <div className="flex items-center gap-2 mb-1">
+                                                        <span className={`text-[10px] font-bold uppercase px-2 py-0.5 rounded ${ev.isStart ? 'bg-blue-100 text-blue-700' : 'bg-slate-100 text-slate-500'}`}>{ev.sub}</span>
+                                                        {ev.reg && <span className="text-[10px] text-slate-400 bg-slate-50 px-1 rounded border border-slate-100"><i className="fas fa-gavel mr-1"></i>{ev.reg}</span>}
+                                                    </div>
+                                                    <h3 className="font-bold text-slate-800">{ev.title}</h3>
+                                                    <p className="text-sm text-slate-500 mt-1">{ev.desc}</p>
+                                                </div>
+                                                <div className="text-right">
+                                                    <div className="text-xl font-mono font-bold text-slate-700">{formatDate(ev.date)}</div>
+                                                    <div className="text-xs text-slate-400">{ev.isStart ? '不计入期间' : '法定截止日'}</div>
+                                                </div>
+                                            </div>
                                         </div>
-                                        <div className="text-right"><div className="text-lg font-mono font-bold">{formatDate(ev.date)}</div></div>
                                     </div>
                                 ))}
                             </div>
                         ) : (
-                            <div className="grid grid-cols-2 gap-6">
-                                <div className="p-4 bg-blue-50 border-l-4 border-blue-500 rounded"><div>近三年起始</div><div className="text-2xl font-bold">{formatDate(backwardDates?.threeYears)}</div></div>
-                                <div className="p-4 bg-indigo-50 border-l-4 border-indigo-500 rounded"><div>近五年起始</div><div className="text-2xl font-bold">{formatDate(backwardDates?.fiveYears)}</div></div>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-pulse-once">
+                                <div className="bg-white border-l-4 border-indigo-500 rounded-lg shadow-sm p-6 border border-slate-100">
+                                    <div className="text-indigo-600 font-semibold mb-2 uppercase tracking-wider text-xs">近三年业绩/信誉</div>
+                                    <div className="text-3xl font-bold text-slate-800 mb-2">{backwardDates ? formatDate(backwardDates.three) : '--'}</div>
+                                    <div className="text-xs text-slate-400">参考起始日 (倒推1095天)</div>
+                                </div>
+                                <div className="bg-white border-l-4 border-purple-500 rounded-lg shadow-sm p-6 border border-slate-100">
+                                    <div className="text-purple-600 font-semibold mb-2 uppercase tracking-wider text-xs">近五年业绩/信誉</div>
+                                    <div className="text-3xl font-bold text-slate-800 mb-2">{backwardDates ? formatDate(backwardDates.five) : '--'}</div>
+                                    <div className="text-xs text-slate-400">参考起始日 (倒推1825天)</div>
+                                </div>
                             </div>
                         )}
-                    </div>
-                </div>
-            );
-        };
-
-        // --- Tool 8: 投标人顺序随机抽取系统 ---
-        const Tool8_RandomDraw = () => {
-            const [bidders, setBidders] = useState([]); const [textInput, setTextInput] = useState(""); const [results, setResults] = useState([]);
-            const handleShuffle = () => {
-                const list = textInput.split('\n').filter(s => s.trim());
-                if (list.length < 2) { alert("请至少输入2个单位"); return; }
-                let arr = [...list];
-                for (let i = arr.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [arr[i], arr[j]] = [arr[j], arr[i]]; }
-                setResults(arr);
-            };
-            return (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6 fade-in">
-                    <div className="space-y-4">
-                        <textarea className="w-full h-64 p-3 border rounded-lg" placeholder="请输入单位名称，每行一个..." value={textInput} onChange={e => setTextInput(e.target.value)}></textarea>
-                        <Button onClick={handleShuffle} className="w-full"><i className="fas fa-random"></i> 开始随机抽取</Button>
-                    </div>
-                    <Card className="bg-slate-50 flex flex-col">
-                        <div className="bg-slate-200 p-3 font-bold">抽取结果 ({results.length})</div>
-                        <div className="flex-1 overflow-y-auto p-4">
-                            {results.map((name, i) => <div key={i} className="py-2 border-b flex gap-3"><span className="font-bold text-blue-600 w-8">{i+1}</span>{name}</div>)}
-                        </div>
                     </Card>
                 </div>
             );
         };
 
-        // --- [新增集成] Tool 9: 日期推算小程序 (基于 day.html) ---
+        const Tool8_RandomDraw = () => {
+            const [txt, setTxt] = useState(""); const [res, setRes] = useState([]);
+            const draw = () => { const a = txt.split('\n').filter(s=>s.trim()); for(let i=a.length-1;i>0;i--){const j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}; setRes(a); };
+            return (
+                <div className="grid grid-cols-2 gap-4 fade-in">
+                    <textarea className="border p-2 rounded h-40" placeholder="一行一个单位名称" value={txt} onChange={e=>setTxt(e.target.value)}></textarea>
+                    <div className="flex flex-col gap-2">
+                        <Button onClick={draw}>开始随机排序</Button>
+                        <div className="flex-1 border rounded p-2 overflow-auto bg-gray-50 h-32">{res.map((r,i)=><div key={i}>{i+1}. {r}</div>)}</div>
+                    </div>
+                </div>
+            )
+        };
+
         const Tool9_DateCalc = () => {
             const [tab, setTab] = useState('calc');
-            // 推算模式
             const [base, setBase] = useState(formatDate(new Date()));
             const [days, setDays] = useState(1);
-            const [calcType, setCalcType] = useState('calendar');
+            const [type, setType] = useState('calendar');
             const [dir, setDir] = useState(1);
-            // 间隔模式
             const [start, setStart] = useState(formatDate(new Date()));
             const [end, setEnd] = useState(formatDate(new Date()));
 
             const calcRes = useMemo(() => {
-                let target = new Date(base);
-                const weekdays = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
-                if (calcType === 'calendar') {
-                    target.setDate(target.getDate() + (days * dir));
+                let d = new Date(base);
+                if(type === 'calendar') {
+                    d.setDate(d.getDate() + (days * dir));
                 } else {
-                    let steps = days;
-                    while (steps > 0) {
-                        target.setDate(target.getDate() + dir);
-                        if (!isWeekend(target)) steps--;
+                    let count = days;
+                    while(count > 0) {
+                        d.setDate(d.getDate() + dir);
+                        if(!isWeekend(d)) count--;
                     }
                 }
-                return { date: formatDate(target), week: weekdays[target.getDay()] };
-            }, [base, days, calcType, dir]);
+                const weeks = ['日','一','二','三','四','五','六'];
+                return { date: formatDate(d), w: weeks[d.getDay()] };
+            }, [base, days, type, dir]);
 
             const diffRes = useMemo(() => {
-                let s = new Date(start); let e = new Date(end);
-                const isNeg = s > e; if (isNeg) [s, e] = [e, s];
+                let s = new Date(start), e = new Date(end);
+                if(s > e) [s,e] = [e,s];
                 const cal = Math.floor((e - s) / 86400000);
-                let work = 0; let tmp = new Date(s);
-                while (tmp < e) { if (!isWeekend(tmp)) work++; tmp.setDate(tmp.getDate() + 1); }
+                let work = 0, cur = new Date(s);
+                while(cur < e) {
+                    if(!isWeekend(cur)) work++;
+                    cur.setDate(cur.getDate() + 1);
+                }
                 return { cal, work };
             }, [start, end]);
 
             return (
-                <div className="fade-in space-y-6">
-                    <div className="flex bg-slate-100 p-1 rounded-lg">
-                        <button onClick={() => setTab('calc')} className={`flex-1 py-2 rounded-lg text-sm font-medium ${tab === 'calc' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>推算日期</button>
-                        <button onClick={() => setTab('diff')} className={`flex-1 py-2 rounded-lg text-sm font-medium ${tab === 'diff' ? 'bg-white shadow text-blue-600' : 'text-slate-500'}`}>计算间隔</button>
+                <div className="fade-in max-w-3xl mx-auto">
+                    <div className="bg-white rounded-2xl shadow-lg border border-slate-100 overflow-hidden">
+                        <div className="flex border-b">
+                            <button onClick={()=>setTab('calc')} className={`flex-1 py-4 text-sm font-bold transition-colors ${tab==='calc'?'bg-blue-50 text-blue-600 border-b-2 border-blue-500':'text-gray-500 hover:bg-gray-50'}`}>推算日期</button>
+                            <button onClick={()=>setTab('diff')} className={`flex-1 py-4 text-sm font-bold transition-colors ${tab==='diff'?'bg-blue-50 text-blue-600 border-b-2 border-blue-500':'text-gray-500 hover:bg-gray-50'}`}>计算间隔</button>
+                        </div>
+                        
+                        <div className="p-8">
+                            {tab === 'calc' ? (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div className="col-span-2">
+                                            <label className="text-xs font-bold text-gray-400 uppercase">基准日期</label>
+                                            <input type="date" value={base} onChange={e=>setBase(e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded-xl focus:ring-2 focus:ring-blue-500 outline-none"/>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">统计方式</label>
+                                            <select value={type} onChange={e=>setType(e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded-xl"><option value="calendar">日历日</option><option value="working">工作日 (排除六日)</option></select>
+                                        </div>
+                                        <div>
+                                            <label className="text-xs font-bold text-gray-400 uppercase">推算方向</label>
+                                            <select value={dir} onChange={e=>setDir(+e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded-xl"><option value="1">向后 (未来)</option><option value="-1">向前 (过去)</option></select>
+                                        </div>
+                                    </div>
+                                    
+                                    <div className="flex items-center gap-4">
+                                        <button onClick={()=>setDays(Math.max(0,days-1))} className="w-10 h-10 rounded-lg border hover:bg-gray-50"><i className="fas fa-minus text-gray-400"></i></button>
+                                        <div className="flex-1 text-center">
+                                            <div className="text-2xl font-bold text-slate-700">{days} <span className="text-sm font-normal text-gray-400">天</span></div>
+                                        </div>
+                                        <button onClick={()=>setDays(days+1)} className="w-10 h-10 rounded-lg border hover:bg-gray-50"><i className="fas fa-plus text-gray-400"></i></button>
+                                    </div>
+
+                                    <div className="bg-gradient-to-r from-blue-500 to-blue-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden">
+                                        <div className="relative z-10">
+                                            <div className="text-xs opacity-70 font-bold uppercase tracking-widest mb-1">计算结果</div>
+                                            <div className="text-4xl font-black tracking-tight">{calcRes.date}</div>
+                                            <div className="mt-2 flex items-center gap-2 opacity-90 text-sm">
+                                                <span className="bg-white/20 px-2 py-0.5 rounded">星期{calcRes.w}</span>
+                                                <span>{type==='working'?'工作日':'日历日'}推算</span>
+                                            </div>
+                                        </div>
+                                        <i className="fas fa-calendar-check absolute -right-4 -bottom-4 text-9xl opacity-10"></i>
+                                    </div>
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    <div className="grid grid-cols-2 gap-4">
+                                        <div><label className="text-xs font-bold text-gray-400 uppercase">开始日期</label><input type="date" value={start} onChange={e=>setStart(e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded-xl"/></div>
+                                        <div><label className="text-xs font-bold text-gray-400 uppercase">结束日期</label><input type="date" value={end} onChange={e=>setEnd(e.target.value)} className="w-full mt-1 p-3 bg-gray-50 border rounded-xl"/></div>
+                                    </div>
+                                    <div className="bg-gray-50 rounded-2xl p-6 border border-dashed border-gray-300 grid grid-cols-2 gap-8 text-center">
+                                        <div>
+                                            <div className="text-xs text-gray-400 font-bold uppercase mb-1">自然日历天</div>
+                                            <div className="text-3xl font-black text-gray-800">{diffRes.cal}</div>
+                                        </div>
+                                        <div className="border-l border-gray-200">
+                                            <div className="text-xs text-gray-400 font-bold uppercase mb-1">工作日 (排休)</div>
+                                            <div className="text-3xl font-black text-blue-600">{diffRes.work}</div>
+                                        </div>
+                                    </div>
+                                    <p className="text-center text-xs text-gray-400">注：间隔计算通常含开始日，不含结束日</p>
+                                </div>
+                            )}
+                        </div>
                     </div>
-                    {tab === 'calc' ? (
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                            <div className="space-y-4">
-                                <InputGroup label="基准日期"><input type="date" value={base} onChange={e => setBase(e.target.value)} className="w-full p-2 border rounded-lg" /></InputGroup>
-                                <div className="grid grid-cols-2 gap-4">
-                                    <InputGroup label="方式"><select value={calcType} onChange={e => setCalcType(e.target.value)} className="w-full p-2 border rounded-lg bg-white"><option value="calendar">日历日</option><option value="working">工作日</option></select></InputGroup>
-                                    <InputGroup label="方向"><select value={dir} onChange={e => setDir(parseInt(e.target.value))} className="w-full p-2 border rounded-lg bg-white"><option value="1">向后 (未来)</option><option value="-1">向前 (过去)</option></select></InputGroup>
+                </div>
+            )
+        };
+
+        const Tool10_InvoicePrinter = () => {
+            const [invoices, setInvoices] = useState([]);
+            const [layout, setLayout] = useState('2-up'); 
+            const [loading, setLoading] = useState(false);
+            const fileInputRef = useRef(null);
+
+            useEffect(() => {
+                if (window.pdfjsLib) {
+                    window.pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+                }
+            }, []);
+
+            useEffect(() => {
+                const styleId = 'invoice-print-style';
+                let styleEl = document.getElementById(styleId);
+                if (!styleEl) {
+                    styleEl = document.createElement('style');
+                    styleEl.id = styleId;
+                    document.head.appendChild(styleEl);
+                }
+                const size = layout === '2-up' ? 'A4 portrait' : 'A4 landscape';
+                styleEl.innerHTML = `@media print { @page { size: ${size}; margin: 0; } }`;
+                return () => { };
+            }, [layout]);
+
+            const processFiles = async (files) => {
+                setLoading(true);
+                const newItems = [];
+                try {
+                    for (const file of files) {
+                        if (file.type.startsWith('image/')) {
+                            newItems.push({
+                                id: Math.random().toString(36).substr(2, 9),
+                                url: URL.createObjectURL(file),
+                                name: file.name,
+                                rotation: 0
+                            });
+                        } else if (file.type === 'application/pdf') {
+                            const pdfImages = await convertPdfToImages(file);
+                            newItems.push(...pdfImages);
+                        }
+                    }
+                    setInvoices(prev => [...prev, ...newItems]);
+                } catch (err) {
+                    alert("处理文件失败: " + err.message);
+                } finally {
+                    setLoading(false);
+                }
+            };
+
+            const convertPdfToImages = async (file) => {
+                const arrayBuffer = await file.arrayBuffer();
+                const loadingTask = window.pdfjsLib.getDocument({
+                    data: arrayBuffer,
+                    cMapUrl: 'https://cdn.jsdelivr.net/npm/pdfjs-dist@3.11.174/cmaps/',
+                    cMapPacked: true,
+                });
+                const pdf = await loadingTask.promise;
+                const images = [];
+                for (let i = 1; i <= pdf.numPages; i++) {
+                    const page = await pdf.getPage(i);
+                    const viewport = page.getViewport({ scale: 2.0 }); 
+                    const canvas = document.createElement('canvas');
+                    const context = canvas.getContext('2d');
+                    canvas.height = viewport.height;
+                    canvas.width = viewport.width;
+                    context.fillStyle = '#FFFFFF';
+                    context.fillRect(0, 0, canvas.width, canvas.height);
+                    await page.render({ canvasContext: context, viewport }).promise;
+                    images.push({
+                        id: Math.random().toString(36).substr(2, 9),
+                        url: canvas.toDataURL('image/jpeg', 0.8),
+                        name: `${file.name} (P${i})`,
+                        rotation: 0
+                    });
+                }
+                return images;
+            };
+
+            const handleDrop = (e) => {
+                e.preventDefault();
+                if (e.dataTransfer.files?.length) processFiles(Array.from(e.dataTransfer.files));
+            };
+
+            const handlePrint = () => {
+                setTimeout(() => window.print(), 100);
+            };
+
+            const rotate = (id) => setInvoices(prev => prev.map(inv => inv.id === id ? { ...inv, rotation: (inv.rotation + 90) % 360 } : inv));
+            const remove = (id) => setInvoices(prev => prev.filter(inv => inv.id !== id));
+            const clear = () => { if(confirm('确定清空所有发票吗？')) setInvoices([]); };
+
+            const renderPrintPages = () => {
+                const chunkSize = layout === '2-up' ? 2 : 4;
+                const pages = [];
+                for (let i = 0; i < invoices.length; i += chunkSize) {
+                    pages.push(invoices.slice(i, i + chunkSize));
+                }
+
+                return (
+                    <div id="invoice-print-area" className="hidden print:block bg-white">
+                        {pages.map((pageItems, pageIdx) => (
+                            <div key={pageIdx} className="invoice-page relative box-border">
+                                <div className={`grid w-full h-full gap-4 ${layout === '2-up' ? 'grid-cols-1 grid-rows-2' : 'grid-cols-2 grid-rows-2'}`}>
+                                    {pageItems.map(inv => (
+                                        <div key={inv.id} className="relative border border-gray-300 print-dashed-border print-hide-bg flex items-center justify-center overflow-hidden p-4">
+                                            <img src={inv.url} style={{ transform: `rotate(${inv.rotation}deg)`, maxHeight: '100%', maxWidth: '100%' }} />
+                                        </div>
+                                    ))}
+                                    {Array.from({ length: chunkSize - pageItems.length }).map((_, i) => (
+                                        <div key={`empty-${i}`} className="border border-dashed border-gray-200"></div>
+                                    ))}
                                 </div>
-                                <InputGroup label="天数"><input type="number" value={days} onChange={e => setDays(Math.max(0, parseInt(e.target.value || 0)))} className="w-full p-2 border rounded-lg" /></InputGroup>
                             </div>
-                            <div className="flex flex-col justify-center">
-                                <div className="bg-blue-600 rounded-2xl p-8 text-white shadow-xl text-center">
-                                    <div className="text-xs opacity-70 mb-2 font-bold tracking-widest">目标日期</div>
-                                    <div className="text-4xl font-black mb-2 font-mono">{calcRes.date}</div>
-                                    <div className="flex justify-center gap-3 text-sm font-medium"><span className="bg-white/20 px-2 py-0.5 rounded">{calcRes.week}</span><span>|</span><span>{days} 个{calcType==='working'?'工作':'日历'}日{dir>0?'后':'前'}</span></div>
-                                </div>
+                        ))}
+                    </div>
+                );
+            };
+
+            return (
+                <div className="fade-in relative min-h-[500px]" onDragOver={e=>e.preventDefault()} onDrop={handleDrop}>
+                    {loading && <div className="absolute inset-0 z-50 bg-white/80 flex flex-col items-center justify-center backdrop-blur-sm"><i className="fas fa-spinner fa-spin text-4xl text-blue-500 mb-2"></i><p>正在处理文件...</p></div>}
+                    <div className="bg-white p-4 rounded-xl shadow-sm border mb-6 flex flex-wrap items-center justify-between gap-4">
+                        <div className="flex gap-2">
+                            <button onClick={()=>fileInputRef.current.click()} className="bg-blue-600 text-white px-4 py-2 rounded-lg hover:bg-blue-700 flex items-center gap-2"><i className="fas fa-cloud-upload-alt"></i> 上传文件</button>
+                            <input type="file" ref={fileInputRef} hidden multiple accept="image/*,application/pdf" onChange={e=>processFiles(Array.from(e.target.files))} />
+                            <div className="bg-slate-100 p-1 rounded-lg flex">
+                                <button onClick={()=>setLayout('2-up')} className={`px-3 py-1 rounded text-sm ${layout==='2-up'?'bg-white shadow text-blue-600':'text-gray-500'}`}><i className="fas fa-columns mr-1"></i>竖向(2张)</button>
+                                <button onClick={()=>setLayout('4-up')} className={`px-3 py-1 rounded text-sm ${layout==='4-up'?'bg-white shadow text-blue-600':'text-gray-500'}`}><i className="fas fa-th mr-1"></i>横向(4张)</button>
                             </div>
                         </div>
-                    ) : (
-                        <div className="space-y-6">
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                                <InputGroup label="开始日期"><input type="date" value={start} onChange={e => setStart(e.target.value)} className="w-full p-2 border rounded-lg" /></InputGroup>
-                                <InputGroup label="结束日期"><input type="date" value={end} onChange={e => setEnd(e.target.value)} className="w-full p-2 border rounded-lg" /></InputGroup>
-                            </div>
-                            <Card className="bg-slate-50 p-8 border-dashed flex justify-around">
-                                <div className="text-center"><div>日历天数</div><div className="text-3xl font-black">{diffRes.cal}</div></div>
-                                <div className="text-center border-l-2 pl-8"><div>工作天数</div><div className="text-3xl font-black text-blue-600">{diffRes.work}</div></div>
-                            </Card>
+                        <div className="flex gap-2">
+                            <button onClick={clear} className="p-2 text-gray-400 hover:text-red-500" title="清空"><i className="fas fa-trash-alt"></i></button>
+                            <button onClick={handlePrint} disabled={invoices.length===0} className={`px-6 py-2 rounded-lg font-bold flex items-center gap-2 ${invoices.length===0?'bg-gray-200 text-gray-400 cursor-not-allowed':'bg-green-600 text-white hover:bg-green-700 shadow-md'}`}><i className="fas fa-print"></i> 打印</button>
                         </div>
-                    )}
+                    </div>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-10">
+                        {invoices.length === 0 && (
+                            <div className="col-span-full border-2 border-dashed border-gray-300 rounded-xl p-12 text-center text-gray-400 cursor-pointer hover:bg-gray-50 hover:border-blue-300 transition-all" onClick={()=>fileInputRef.current.click()}>
+                                <i className="fas fa-images text-4xl mb-3"></i>
+                                <p>点击或拖拽上传 JPG/PNG/PDF 发票</p>
+                            </div>
+                        )}
+                        {invoices.map(inv => (
+                            <div key={inv.id} className="relative group bg-slate-50 border rounded-lg h-48 flex items-center justify-center overflow-hidden">
+                                <img src={inv.url} className="max-w-full max-h-full object-contain transition-transform" style={{transform: `rotate(${inv.rotation}deg)`}} />
+                                <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-3">
+                                    <button onClick={()=>rotate(inv.id)} className="w-8 h-8 bg-white rounded-full text-gray-700 hover:text-blue-600"><i className="fas fa-redo"></i></button>
+                                    <button onClick={()=>remove(inv.id)} className="w-8 h-8 bg-white rounded-full text-gray-700 hover:text-red-600"><i className="fas fa-trash-alt"></i></button>
+                                </div>
+                                <div className="absolute bottom-1 right-1 bg-black/60 text-white text-[10px] px-1 rounded">{inv.name.slice(0,10)}...</div>
+                            </div>
+                        ))}
+                    </div>
+                    <div className="text-center text-sm text-gray-400"><i className="fas fa-info-circle mr-1"></i> 打印时请将“边距”设置为“无”，以获得标准尺寸。</div>
+                    {renderPrintPages()}
                 </div>
             );
         };
 
-        // --- Tool 10: Readme ---
-        const Tool10_Readme = () => (
-            <div className="fade-in max-w-4xl mx-auto"><Card className="p-8"><h2 className="text-2xl font-bold mb-6 text-center">使用说明与依据汇总</h2><div className="overflow-x-auto"><table className="w-full text-sm text-left"><thead className="bg-slate-100"><tr><th className="p-3">工具</th><th className="p-3">适用区域</th><th className="p-3">主要依据</th></tr></thead><tbody className="divide-y"><tr><td className="p-3">01-06 费用类</td><td className="p-3">全国/湖南</td><td className="p-3">计价格、发改价格等系列文件</td></tr><tr><td className="p-3">07 招标时限</td><td className="p-3">全国</td><td className="p-3">《招标投标法》及实施条例</td></tr><tr className="bg-blue-50"><td className="p-3 font-bold">09 日期推算</td><td className="p-3">通用</td><td className="p-3 text-blue-600">支持工作日计算，适用于时限自查</td></tr></tbody></table></div></Card></div>
-        );
-
-        // --- 主 App 组件 ---
         const App = () => {
             const [currentTool, setCurrentTool] = useState(null);
+            
             const tools = [
                 { id: 1, title: '招标代理服务费', icon: 'fa-calculator', color: 'text-blue-500', desc: '差额定率累进计算' },
-                { id: 2, title: '湖南省专家评审费', icon: 'fa-user-tie', color: 'text-purple-500', desc: '含2025综合评标及2023政采标准' },
-                { id: 3, title: '湖南省交易服务费', icon: 'fa-building', color: 'text-emerald-500', desc: '湘发改价费规〔2024〕292号' },
+                { id: 2, title: '专家评审费估算', icon: 'fa-user-tie', color: 'text-purple-500', desc: '综合评标/政府采购标准' },
+                { id: 3, title: '交易服务费', icon: 'fa-building', color: 'text-emerald-500', desc: '湘发改价费规〔2024〕292号' },
                 { id: 4, title: '工程设计收费', icon: 'fa-pen-ruler', color: 'text-orange-500', desc: '计价格[2002]10号计算' },
                 { id: 5, title: '工程监理收费', icon: 'fa-clipboard-check', color: 'text-teal-500', desc: '发改价格〔2007〕670号' },
                 { id: 6, title: '前期工作咨询收费', icon: 'fa-chart-line', color: 'text-indigo-500', desc: '计价格[1999]1283号' },
-                { id: 7, title: '依法招标时限计算', icon: 'fa-business-time', color: 'text-teal-600', desc: '关键节点时限推算' },
-                { id: 8, title: '随机抽取系统', icon: 'fa-dice', color: 'text-red-500', desc: '投标人顺序随机抽取' },
-                { id: 9, title: '日期推算与间隔', icon: 'fa-calendar-alt', color: 'text-blue-600', desc: '工作日/日历日精准计算' },
-                { id: 10, title: '使用说明 (Readme)', icon: 'fa-book', color: 'text-slate-600', desc: '依据文件对照表' },
+                { id: 7, title: '依法招标时限计算', icon: 'fa-business-time', color: 'text-teal-600', desc: '【升级】含民法典201条合规逻辑' },
+                { id: 9, title: '日期计算助手', icon: 'fa-calendar-alt', color: 'text-cyan-500', desc: '【新增】工作日/日历日双向推算' },
+                { id: 10, title: '发票打印助手', icon: 'fa-print', color: 'text-pink-500', desc: '【新增】PDF转图片/自动拼版打印' },
+                { id: 8, title: '随机抽取系统', icon: 'fa-dice', color: 'text-red-500', desc: '投标人/专家顺序随机抽取' },
             ];
+
             const renderTool = () => {
                 switch(currentTool) {
-                    case 1: return <Tool1_AgencyFee />; case 2: return <Tool2_ExpertFee />; case 3: return <Tool3_TransactionFee />;
-                    case 4: return <Tool4_DesignFee />; case 5: return <Tool5_SupervisionFee />; case 6: return <Tool6_ConsultingFee />;
-                    case 7: return <Tool7_TimeLimit />; case 8: return <Tool8_RandomDraw />; case 9: return <Tool9_DateCalc />;
-                    case 10: return <Tool10_Readme />; default: return null;
+                    case 1: return <Tool1_AgencyFee />; 
+                    case 2: return <Tool2_ExpertFee />; 
+                    case 3: return <Tool3_TransactionFee />;
+                    case 4: return <Tool4_DesignFee />; 
+                    case 5: return <Tool5_SupervisionFee />;
+                    case 6: return <Tool6_ConsultingFee />;
+                    case 7: return <Tool7_TimeLimit />; 
+                    case 8: return <Tool8_RandomDraw />; 
+                    case 9: return <Tool9_DateCalc />;
+                    case 10: return <Tool10_InvoicePrinter />;
+                    default: return null;
                 }
             };
+
             return (
-                <div className="min-h-screen flex flex-col">
-                    <header className="bg-gradient-to-r from-blue-700 to-indigo-800 text-white shadow-lg p-6">
+                <div className="min-h-screen flex flex-col toolbox-layout">
+                    <header className="bg-gradient-to-r from-slate-800 to-slate-900 text-white shadow-lg p-6">
                         <div className="max-w-6xl mx-auto flex justify-between items-center">
-                            <div className="flex items-center gap-3 cursor-pointer" onClick={() => setCurrentTool(null)}>
-                                <i className="fas fa-toolbox text-2xl"></i><h1 className="text-xl font-bold">招标采购人工具箱 v2.2</h1>
+                            <div className="flex items-center gap-3 cursor-pointer hover:opacity-90 transition-opacity" onClick={() => setCurrentTool(null)}>
+                                <div className="w-10 h-10 bg-white/10 rounded-lg flex items-center justify-center">
+                                    <i className="fas fa-toolbox text-xl"></i>
+                                </div>
+                                <div>
+                                    <h1 className="text-xl font-bold tracking-tight">招标采购人工具箱</h1>
+                                    <p className="text-xs text-slate-400">Version 2.3 (完整集成版)</p>
+                                </div>
                             </div>
-                            {currentTool && <button onClick={() => setCurrentTool(null)} className="bg-white/20 px-4 py-2 rounded-lg text-sm">返回首页</button>}
+                            {currentTool && <button onClick={() => setCurrentTool(null)} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm transition-colors"><i className="fas fa-arrow-left mr-2"></i>返回首页</button>}
                         </div>
                     </header>
+                    
                     <main className="flex-grow max-w-6xl mx-auto px-4 py-8 w-full">
                         {!currentTool ? (
-                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 fade-in">
+                            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6 fade-in tool-selector">
                                 {tools.map(t => (
-                                    <div key={t.id} onClick={() => setCurrentTool(t.id)} className="bg-white rounded-xl shadow-sm border p-6 hover:shadow-lg hover:border-blue-300 transition-all cursor-pointer group">
-                                        <div className="w-12 h-12 rounded-full bg-slate-50 flex items-center justify-center mb-4 group-hover:bg-blue-50"><i className={`fas ${t.icon} ${t.color} text-2xl`}></i></div>
-                                        <h3 className="text-lg font-bold text-slate-800 group-hover:text-blue-600">{t.title}</h3><p className="text-slate-500 text-sm mt-2">{t.desc}</p>
+                                    <div key={t.id} onClick={() => setCurrentTool(t.id)} className="bg-white rounded-xl shadow-sm border border-slate-200 p-6 hover:shadow-lg hover:border-blue-400 hover:-translate-y-1 transition-all cursor-pointer group relative overflow-hidden">
+                                        <div className="absolute top-0 right-0 p-2 opacity-10 group-hover:opacity-20 transition-opacity"><i className={`fas ${t.icon} text-6xl ${t.color}`}></i></div>
+                                        <div className={`w-12 h-12 rounded-xl flex items-center justify-center mb-4 ${t.color.replace('text','bg').replace('500','50').replace('600','50')} group-hover:scale-110 transition-transform`}>
+                                            <i className={`fas ${t.icon} ${t.color} text-2xl`}></i>
+                                        </div>
+                                        <h3 className="text-lg font-bold text-slate-800 mb-1">{t.title}</h3>
+                                        <p className="text-slate-500 text-xs leading-relaxed">{t.desc}</p>
                                     </div>
                                 ))}
+                                <div className="bg-slate-50 rounded-xl border border-dashed border-slate-300 p-6 flex flex-col items-center justify-center text-center text-slate-400">
+                                    <i className="fas fa-code-branch mb-2 text-2xl"></i>
+                                    <span className="text-xs">更多功能开发中...</span>
+                                </div>
                             </div>
                         ) : (
                             <div className="fade-in">
-                                <h2 className="text-2xl font-bold text-slate-800 mb-6 flex items-center gap-3 border-b pb-4">
-                                    <i className={`fas ${tools.find(t=>t.id===currentTool).icon} ${tools.find(t=>t.id===currentTool).color}`}></i>
-                                    {tools.find(t=>t.id===currentTool).title}
-                                </h2>
+                                <div className="flex items-center gap-3 border-b border-slate-200 pb-4 mb-6">
+                                    <div className={`w-10 h-10 rounded-lg flex items-center justify-center bg-slate-100`}>
+                                        <i className={`fas ${tools.find(t=>t.id===currentTool).icon} ${tools.find(t=>t.id===currentTool).color} text-xl`}></i>
+                                    </div>
+                                    <h2 className="text-2xl font-bold text-slate-800">{tools.find(t=>t.id===currentTool).title}</h2>
+                                </div>
                                 {renderTool()}
                             </div>
                         )}
                     </main>
-                    <footer className="bg-white border-t py-8 text-center text-xs text-slate-400">
-                        <p>本工具箱结果仅供参考，不作为最终法律依据。如有问题请反馈至 jeff68@163.com</p>
+
+                    <footer className="bg-white border-t py-8 text-center text-xs text-slate-400 no-print">
+                        <p>本工具箱结果仅供参考，不作为最终法律依据。v2.3 Updated 2025</p>
                     </footer>
                 </div>
             );
         };
+
         const root = ReactDOM.createRoot(document.getElementById('root'));
         root.render(<App />);
     </script>
