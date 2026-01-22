@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>招标采购人工具箱 v2.3</title>
+    <title>招标采购人工具箱 v2.4</title>
     <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <!-- React & ReactDOM -->
@@ -414,7 +414,7 @@
             );
         };
 
-        // --- Tool 5: 建设工程监理费用 (完整恢复功能) ---
+        // --- Tool 5: 建设工程监理费用 ---
         const Tool5_SupervisionFee = () => {
             const [invest, setInvest] = useState("");
             const [indCoeff, setIndCoeff] = useState(1.0);
@@ -432,7 +432,8 @@
                 let base = 0; if (val < 500) base = (val/500)*16.5; else if (val > 1000000) base = val * 0.01039;
                 else {
                     for(let i=0; i<table.length-1; i++) {
-                        if (val >= table[i].l && val <= table[i+1].x) {
+                        // FIX: Changed table[i+1].x to table[i+1].l
+                        if (val >= table[i].l && val <= table[i+1].l) {
                             base = table[i].v + (val - table[i].l) * (table[i+1].v - table[i].v) / (table[i+1].l - table[i].l); break;
                         }
                     }
@@ -538,7 +539,7 @@
             );
         };
 
-        // --- Tool 7: 依法招标项目时限计算器 (修复逻辑版) ---
+        // --- Tool 7: 依法招标项目时限计算器---
         const Tool7_TimeLimit = () => {
             const [mode, setMode] = useState('forward');
             const [baseDate, setBaseDate] = useState(formatDate(new Date()));
@@ -986,7 +987,7 @@
                                 </div>
                                 <div>
                                     <h1 className="text-xl font-bold tracking-tight">招标采购人工具箱</h1>
-                                    <p className="text-xs text-slate-400">Version 2.3</p>
+                                    <p className="text-xs text-slate-400">Version 2.4 </p>
                                 </div>
                             </div>
                             {currentTool && <button onClick={() => setCurrentTool(null)} className="bg-white/10 hover:bg-white/20 px-4 py-2 rounded-lg text-sm transition-colors"><i className="fas fa-arrow-left mr-2"></i>返回首页</button>}
@@ -1025,7 +1026,7 @@
                     </main>
 
                     <footer className="bg-white border-t py-8 text-center text-xs text-slate-400 no-print">
-                        <p>本工具箱结果仅供参考，不作为最终法律依据。v2.3 Updated 2025</p>
+                        <p>本工具箱结果仅供参考，不作为最终法律依据。v2.4 Updated 2026</p>
                     </footer>
                 </div>
             );
